@@ -146,6 +146,7 @@ function showCheckout() {
       
       <label>Phone Number * (WhatsApp)</label>
       <input id="custPhone" placeholder="+233 XX XXX XXXX" />
+      <div id="discountMessage" style="margin-top:8px; padding:8px; border-radius:6px; font-size:0.9rem; display:none"></div>
       
       <label>Delivery Method *</label>
       <select id="deliveryOpt">
@@ -207,6 +208,44 @@ function showCheckout() {
   const deliveryCost = 10 // Will be calculated based on delivery method
   const totalEl = document.getElementById('totalAmount')
   if (totalEl) totalEl.innerText = total.toFixed(2)
+  
+  let appliedDiscount = { eligible: false, discountPercent: 0 }
+  
+  // Check discount when phone number changes
+  document.getElementById('custPhone').addEventListener('blur', async (e) => {
+    const phone = e.target.value.trim()
+    if (!phone) return
+    
+    try {
+      const res = await fetch(`${API_BASE}/check-discount/${encodeURIComponent(phone)}`)
+      const data = await res.json()
+      
+      if (res.ok && data) {
+        appliedDiscount = data
+        const msgEl = document.getElementById('discountMessage')
+        
+        if (data.eligible) {
+          msgEl.style.display = 'block'
+          msgEl.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+          msgEl.style.color = '#fff'
+          msgEl.innerHTML = `<strong>🎉 ${data.message}</strong>`
+          
+          // Update total amount with discount
+          const discountedTotal = total * (1 - data.discountPercent / 100)
+          if (totalEl) {
+            totalEl.innerHTML = `<span style="text-decoration:line-through; opacity:0.7">${total.toFixed(2)}</span> ${discountedTotal.toFixed(2)}`
+          }
+        } else {
+          msgEl.style.display = 'block'
+          msgEl.style.background = '#f3f4f6'
+          msgEl.style.color = '#666'
+          msgEl.innerHTML = `<strong>💡 ${data.message}</strong>`
+        }
+      }
+    } catch (e) {
+      console.error('Failed to check discount:', e)
+    }
+  })
 
   document.getElementById('deliveryOpt').addEventListener('change', (e)=>{ 
     document.getElementById('addrDiv').style.display = e.target.value==='delivery' ? 'block' : 'none' 

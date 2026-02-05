@@ -208,6 +208,22 @@ app.get('/api/admin/weekly-sales', checkAdmin, (req, res) => {
   })
 })
 
+// Get customer monthly stats for loyalty discounts
+app.get('/api/admin/customer-discounts', checkAdmin, (req, res) => {
+  db.getCustomerMonthlyStats((err, data) => {
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(data)
+  })
+})
+
+// Check discount for a specific customer (public endpoint for checkout)
+app.get('/api/check-discount/:phone', (req, res) => {
+  db.checkCustomerDiscount(req.params.phone, (err, discount) => {
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(discount)
+  })
+})
+
 // Serve frontend static files for simple deployments
 app.use(express.static(path.join(__dirname, '..', 'frontend')))
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html')))

@@ -416,5 +416,167 @@ module.exports = {
         weeks
       })
     } catch (e) { callback(e) }
-  }
+  },
+  
+  getCustomerMonthlyStats: (callback) => {
+    try {
+      // Get all orders
+      const ordersResult = db.exec('SELECT * FROM orders')
+      if (ordersResult.length === 0 || ordersResult[0].values.length === 0) {
+        return callback(null, { customers: [] })
+      }
+      
+      const orders = ordersResult[0].values.map(row => ({
+        id: row[0], 
+        total: row[1], 
+        status: row[2],
+        customer: row[5] ? JSON.parse(row[5]) : {},
+        createdAt: row[6] || new Date().toISOString()
+      }))
+      
+      // Get current month boundaries
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+      
+      // Track customer stats by phone number
+      const customerStats = {}
+      
+      orders.forEach(order => {
+        const orderDate = new Date(order.createdAt)
+        const phone = order.customer?.phone || 'unknown'
+        const name = order.customer?.name || 'Unknown'
+        
+        if (!phone || phone === 'unknown') return
+        
+        // Initialize customer if not exists
+        if (!customerStats[phone]) {
+          customerStats[phone] = {
+            phone,
+            name,
+            currentMonth: { orders: 0, itemsCount: 0, totalSpent: 0 },
+            allTime: { orders: 0, itemsCount: 0, totalSpent: 0 }
+          }
+        }
+        
+        // Get order items count
+        const itemsResult = db.exec('SELECT SUM(qty) as total FROM order_items WHERE order_id = ?', [order.id])
+        const itemsCount = itemsResult.length > 0 && itemsResult[0].values.length > 0 && itemsResult[0].values[0][0] 
+          ? itemsResult[0].values[0][0] 
+          : 0
+        
+        // All time stats
+        customerStats[phone].allTime.orders += 1
+        customerStats[phone].allTime.itemsCount += itemsCount
+        customerStats[phone].allTime.totalSpent += order.total
+        
+        // Current month stats
+        if (orderDate >= monthStart && orderDate <= monthEnd) {
+          customerStats[phone].currentMonth.orders += 1
+          customerStats[phone].currentMonth.itemsCount += itemsCount
+          customerStats[phone].currentMonth.totalSpent += order.total
+        }
+      })
+      
+      // Calculate discount eligibility
+      // Rules: 
+      // - 5% discount if 20+ items this month
+      // - 10% discount if 50+ items this month
+      // - 15% discount if 100+ items this month
+      const customers = Object.values(customerStats).map(c => {
+        let discountPercent = 0
+        let discountReason = ''
+        
+        if (c.currentMonth.itemsCount >= 100) {
+          discountPercent = 15
+          discountReason = '100+ items this month'
+        } else if (c.currentMonth.itemsCount >= 50) {
+          discountPercent = 10
+          discountReason = '50+ items this month'
+        } else if (c.currentMonth.itemsCount >= 20) {
+          discountPercent = 5
+          discountReason = '20+ items this month'
+        }
+        
+        return {
+          ...c,
+          discountPercent,
+          discountReason,
+          eligible: discountPercent > 0
+        }
+      }).sort((a, b) => b.currentMonth.itemsCount - a.currentMonth.itemsCount)
+      
+      callback(null, { customers })
+    } catch (e) { callback(e) }
+  },
+  
+  checkCustomerDiscount: (phone, callback) => {
+    try {
+      if (!phone) return callback(null, { eligible: false, discountPercent: 0 })
+      
+      // Get customer's current month orders
+      const ordersResult = db.exec('SELECT * FROM orders')
+      if (ordersResult.length === 0 || ordersResult[0].values.length === 0) {
+        return callback(null, { eligible: false, discountPercent: 0 })
+      }
+      
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+      
+      let totalItems = 0
+      let totalSpent = 0
+      let ordersCount = 0
+      
+      const orders = ordersResult[0].values.map(row => ({
+        id: row[0],
+        total: row[1],
+        customer: row[5] ? JSON.parse(row[5]) : {},
+        createdAt: row[6] || new Date().toISOString()
+      }))
+      
+      orders.forEach(order => {
+        const orderDate = new Date(order.createdAt)
+        const customerPhone = order.customer?.phone || ''
+        
+        if (customerPhone === phone && orderDate >= monthStart && orderDate <= monthEnd) {
+          ordersCount += 1
+          totalSpent += order.total
+          
+          // Get items count
+          const itemsResult = db.exec('SELECT SUM(qty) as total FROM order_items WHERE order_id = ?', [order.id])
+          const itemsCount = itemsResult.length > 0 && itemsResult[0].values.length > 0 && itemsResult[0].values[0][0] 
+            ? itemsResult[0].values[0][0] 
+            : 0
+          totalItems += itemsCount
+        }
+      })
+      
+      // Calculate discount
+      let discountPercent = 0
+      let message = ''
+      
+      if (totalItems >= 100) {
+        discountPercent = 15
+        message = `🎉 Loyalty Discount: ${discountPercent}% off! You've ordered ${totalItems} items this month.`
+      } else if (totalItems >= 50) {
+        discountPercent = 10
+        message = `🎉 Loyalty Discount: ${discountPercent}% off! You've ordered ${totalItems} items this month.`
+      } else if (totalItems >= 20) {
+        discountPercent = 5
+        message = `🎉 Loyalty Discount: ${discountPercent}% off! You've ordered ${totalItems} items this month.`
+      } else {
+        const remaining = 20 - totalItems
+        message = `Order ${remaining} more items this month to get 5% discount!`
+      }
+      
+      callback(null, {
+        eligible: discountPercent > 0,
+        discountPercent,
+        message,
+        monthlyItems: totalItems,
+        monthlySpent: totalSpent,
+        monthlyOrders: ordersCount
+      })
+    } catch (e) { callback(e) }  }
 }

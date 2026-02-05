@@ -213,6 +213,73 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   })
   
+  document.getElementById('loadCustomerDiscounts').addEventListener('click', async () => {
+    const res = await fetchWithToken('/admin/customer-discounts')
+    if (res.error) return alert(res.error)
+    
+    // Show the section
+    document.getElementById('customerDiscountsSection').style.display = 'block'
+    
+    // Render customer discounts table
+    const listEl = document.getElementById('customerDiscountsList')
+    const eligible = res.customers.filter(c => c.eligible)
+    const notEligible = res.customers.filter(c => !c.eligible).slice(0, 10) // Top 10 non-eligible
+    
+    if (eligible.length === 0 && notEligible.length === 0) {
+      listEl.innerHTML = '<p style="color:#666">No customer data available yet.</p>'
+    } else {
+      let html = ''
+      
+      if (eligible.length > 0) {
+        html += '<h4 style="color:var(--success); margin-top:0">✅ Eligible for Discount (' + eligible.length + ')</h4>'
+        html += '<table class="admin-table"><tr><th>Customer</th><th>Phone</th><th>This Month</th><th>All Time</th><th>Discount</th></tr>'
+        eligible.forEach(c => {
+          const badgeColor = c.discountPercent >= 15 ? '#fbbf24' : c.discountPercent >= 10 ? '#c0c0c0' : '#cd7f32'
+          html += `<tr>
+            <td><strong>${c.name}</strong></td>
+            <td>${c.phone}</td>
+            <td>
+              <div><strong>${c.currentMonth.itemsCount} items</strong> (${c.currentMonth.orders} orders)</div>
+              <div style="font-size:0.9rem; color:#666">GH₵ ${c.currentMonth.totalSpent.toFixed(2)}</div>
+            </td>
+            <td>
+              <div>${c.allTime.itemsCount} items (${c.allTime.orders} orders)</div>
+              <div style="font-size:0.9rem; color:#666">GH₵ ${c.allTime.totalSpent.toFixed(2)}</div>
+            </td>
+            <td>
+              <span style="background:${badgeColor}; color:#fff; padding:4px 12px; border-radius:12px; font-weight:700">
+                ${c.discountPercent}% OFF
+              </span>
+              <div style="font-size:0.85rem; color:#666; margin-top:4px">${c.discountReason}</div>
+            </td>
+          </tr>`
+        })
+        html += '</table>'
+      }
+      
+      if (notEligible.length > 0) {
+        html += '<h4 style="margin-top:24px">📊 Top Customers (Not Yet Eligible)</h4>'
+        html += '<table class="admin-table"><tr><th>Customer</th><th>Phone</th><th>This Month</th><th>To Next Tier</th></tr>'
+        notEligible.forEach(c => {
+          let nextTier = 20
+          if (c.currentMonth.itemsCount >= 50) nextTier = 100
+          else if (c.currentMonth.itemsCount >= 20) nextTier = 50
+          const remaining = nextTier - c.currentMonth.itemsCount
+          
+          html += `<tr>
+            <td>${c.name}</td>
+            <td>${c.phone}</td>
+            <td>${c.currentMonth.itemsCount} items (${c.currentMonth.orders} orders)</td>
+            <td style="color:#f59e0b">${remaining} more items for ${nextTier >= 100 ? '15' : nextTier >= 50 ? '10' : '5'}% discount</td>
+          </tr>`
+        })
+        html += '</table>'
+      }
+      
+      listEl.innerHTML = html
+    }
+  })
+  
   document.getElementById('addProduct').addEventListener('click', async () => {
     const name = document.getElementById('newProductName').value.trim()
     const price = Number(document.getElementById('newProductPrice').value)
