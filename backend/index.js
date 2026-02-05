@@ -158,10 +158,11 @@ app.post('/api/admin/products/:id/restock', checkAdmin, (req, res) => {
 })
 
 app.put('/api/admin/products/:id', checkAdmin, (req, res) => {
-  const { name, price, stock } = req.body
+  const { name, price, cost, stock } = req.body
   const updates = {}
   if (name !== undefined) updates.name = name
   if (price !== undefined) updates.price = Number(price)
+  if (cost !== undefined) updates.cost = Number(cost)
   if (stock !== undefined) updates.stock = Number(stock)
   
   db.updateProduct(req.params.id, updates, (err, p) => {
@@ -181,13 +182,21 @@ app.post('/api/admin/orders/:id/status', checkAdmin, (req, res) => {
 
 // Create new product
 app.post('/api/admin/products', checkAdmin, (req, res) => {
-  const { name, price, stock } = req.body
+  const { name, price, cost, stock } = req.body
   if (!name || !price || stock === undefined) {
     return res.status(400).json({ error: 'Missing required fields: name, price, stock' })
   }
-  db.createProduct({ name, price: Number(price), stock: Number(stock) }, (err, product) => {
+  db.createProduct({ name, price: Number(price), cost: Number(cost) || 0, stock: Number(stock) }, (err, product) => {
     if (err) return res.status(500).json({ error: err.message })
     res.json({ ok: true, product })
+  })
+})
+
+// Get profit/loss report
+app.get('/api/admin/profit-loss', checkAdmin, (req, res) => {
+  db.getProfitLoss((err, report) => {
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(report)
   })
 })
 

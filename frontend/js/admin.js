@@ -14,12 +14,14 @@ async function fetchWithToken(path, opts = {}) {
 function renderProducts(list) {
   const el = document.getElementById('products')
   if (!list || list.length === 0) { el.innerHTML = '<p>No products</p>'; return }
-  let html = '<table class="admin-table"><tr><th>ID</th><th>Name</th><th>Price (GH₵)</th><th>Stock</th><th>Actions</th></tr>'
+  let html = '<table class="admin-table"><tr><th>ID</th><th>Name</th><th>Sell Price (GH₵)</th><th>Cost Price (GH₵)</th><th>Stock</th><th>Actions</th></tr>'
   list.forEach(p => {
+    const margin = p.price > p.cost ? ((p.price - p.cost) / p.price * 100).toFixed(1) : 0
     html += `<tr>
       <td>${p.id}</td>
       <td><input id="name-${p.id}" value="${p.name}" style="width:100%" /></td>
       <td><input id="price-${p.id}" type="number" step="0.01" value="${p.price}" style="width:80px" /></td>
+      <td><input id="cost-${p.id}" type="number" step="0.01" value="${p.cost || 0}" style="width:80px" title="Margin: ${margin}%" /></td>
       <td><input id="stock-${p.id}" type="number" step="0.5" value="${p.stock}" style="width:80px" /></td>
       <td>
         <button data-id="${p.id}" class="saveProduct" style="background:var(--primary); color:#fff; margin-right:4px">Save</button>
@@ -36,15 +38,17 @@ function renderProducts(list) {
     const id = e.target.dataset.id
     const name = document.getElementById(`name-${id}`).value.trim()
     const price = Number(document.getElementById(`price-${id}`).value)
+    const cost = Number(document.getElementById(`cost-${id}`).value)
     const stock = Number(document.getElementById(`stock-${id}`).value)
     
     if (!name) return alert('Name cannot be empty')
     if (!price || price <= 0) return alert('Price must be greater than 0')
+    if (cost < 0) return alert('Cost cannot be negative')
     if (stock < 0) return alert('Stock cannot be negative')
     
     const res = await fetchWithToken(`/admin/products/${id}`, { 
       method: 'PUT', 
-      body: JSON.stringify({ name, price, stock }) 
+      body: JSON.stringify({ name, price, cost, stock }) 
     })
     if (res.error) return alert(res.error)
     alert(`Product updated: ${res.product.name}`)
@@ -99,27 +103,65 @@ window.addEventListener('DOMContentLoaded', () => {
     renderOrders(res)
   })
   
+  document.getElementById('loadProfitLoss').addEventListener('click', async () => {
+    const res = await fetchWithToken('/admin/profit-loss')
+    if (res.error) return alert(res.error)
+    
+    // Show the section
+    document.getElementById('profitLossSection').style.display = 'block'
+    
+    // Update summary cards
+    document.getElementById('totalRevenue').textContent = `GH₵ ${res.totalRevenue.toFixed(2)}`
+    document.getElementById('totalCost').textContent = `GH₵ ${res.totalCost.toFixed(2)}`
+    document.getElementById('netProfit').textContent = `GH₵ ${res.totalProfit.toFixed(2)}`
+    document.getElementById('orderCount').textContent = res.orderCount
+    
+    // Render product performance table
+    const perfEl = document.getElementById('productPerformance')
+    if (!res.productSales || res.productSales.length === 0) {
+      perfEl.innerHTML = '<p style="color:#666">No sales data available yet. Products will appear here after orders are placed.</p>'
+    } else {
+      let html = '<table class="admin-table"><tr><th>Product</th><th>Units Sold</th><th>Revenue</th><th>Cost</th><th>Profit</th><th>Margin %</th></tr>'
+      res.productSales.forEach(p => {
+        const margin = p.revenue > 0 ? ((p.profit / p.revenue) * 100).toFixed(1) : 0
+        const profitClass = p.profit >= 0 ? 'color:#22c55e' : 'color:#ef4444'
+        html += `<tr>
+          <td>${p.name}</td>
+          <td>${p.unitsSold.toFixed(1)}</td>
+          <td>GH₵ ${p.revenue.toFixed(2)}</td>
+          <td>GH₵ ${p.cost.toFixed(2)}</td>
+          <td style="${profitClass}; font-weight:600">GH₵ ${p.profit.toFixed(2)}</td>
+          <td style="${profitClass}">${margin}%</td>
+        </tr>`
+      })
+      html += '</table>'
+      perfEl.innerHTML = html
+    }
+  })
+  
   document.getElementById('addProduct').addEventListener('click', async () => {
     const name = document.getElementById('newProductName').value.trim()
     const price = Number(document.getElementById('newProductPrice').value)
+    const cost = Number(document.getElementById('newProductCost').value)
     const stock = Number(document.getElementById('newProductStock').value)
     
     if (!name) return alert('Enter product name')
-    if (!price || price <= 0) return alert('Enter valid price')
+    if (!price || price <= 0) return alert('Enter valid selling price')
+    if (cost < 0) return alert('Cost price cannot be negative')
     if (stock === undefined || stock < 0) return alert('Enter valid stock')
     
     const res = await fetchWithToken('/admin/products', { 
       method: 'POST', 
-      body: JSON.stringify({ name, price, stock }) 
+      body: JSON.stringify({ name, price, cost, stock }) 
     })
     
     if (res.error) return alert(res.error)
     
-    alert(`Product "${res.product.name}" added successfully! (ID: ${res.product.id})`)
-    
+    alert(`Product "${res.product.name}" added successfully! (ID: ${res.product.id})`)    
     // Clear form
     document.getElementById('newProductName').value = ''
     document.getElementById('newProductPrice').value = ''
+    document.getElementById('newProductCost').value = ''
     document.getElementById('newProductStock').value = ''
     
     // Reload products

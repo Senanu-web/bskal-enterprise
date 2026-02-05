@@ -26,6 +26,7 @@ async function initDb() {
       id INTEGER PRIMARY KEY,
       name TEXT NOT NULL,
       price REAL NOT NULL,
+      cost REAL DEFAULT 0,
       stock REAL NOT NULL
     )
   `)
@@ -61,11 +62,11 @@ async function initDb() {
   if (count === 0) {
     const { beverages, meats } = require('./data-demo')
     const rows = [
-      ...beverages.map(b => ({ id: b.id, name: b.name, price: b.price, stock: b.stock })),
-      ...meats.map(m => ({ id: m.id, name: m.name, price: m.pricePerKg, stock: m.stockKg }))
+      ...beverages.map(b => ({ id: b.id, name: b.name, price: b.price, cost: b.cost || 0, stock: b.stock })),
+      ...meats.map(m => ({ id: m.id, name: m.name, price: m.pricePerKg, cost: m.cost || 0, stock: m.stockKg }))
     ]
     rows.forEach(r => {
-      db.run('INSERT INTO products (id, name, price, stock) VALUES (?, ?, ?, ?)', [r.id, r.name, r.price, r.stock])
+      db.run('INSERT INTO products (id, name, price, cost, stock) VALUES (?, ?, ?, ?, ?)', [r.id, r.name, r.price, r.cost, r.stock])
     })
     saveDb()
   }
@@ -94,7 +95,7 @@ module.exports = {
     try {
       const result = db.exec('SELECT * FROM products ORDER BY id')
       const products = result.length > 0 ? result[0].values.map(row => ({
-        id: row[0], name: row[1], price: row[2], stock: row[3]
+        id: row[0], name: row[1], price: row[2], cost: row[3], stock: row[4]
       })) : []
       callback(null, products)
     } catch (e) { callback(e) }
@@ -104,7 +105,7 @@ module.exports = {
     try {
       const result = db.exec('SELECT * FROM products WHERE id = ?', [id])
       const product = result.length > 0 && result[0].values.length > 0 ? {
-        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], stock: result[0].values[0][3]
+        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], cost: result[0].values[0][3], stock: result[0].values[0][4]
       } : null
       callback(null, product)
     } catch (e) { callback(e) }
@@ -123,20 +124,21 @@ module.exports = {
       db.run('UPDATE products SET stock = stock + ? WHERE id = ?', [amount, id])
       const result = db.exec('SELECT * FROM products WHERE id = ?', [id])
       const product = result.length > 0 && result[0].values.length > 0 ? {
-        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], stock: result[0].values[0][3]
+        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], cost: result[0].values[0][3], stock: result[0].values[0][4]
       } : null
       saveDb()
       callback(null, product)
     } catch (e) { callback(e) }
   },
   
-  updateProduct: (id, { name, price, stock }, callback) => {
+  updateProduct: (id, { name, price, cost, stock }, callback) => {
     try {
       const updates = []
       const params = []
       
       if (name !== undefined) { updates.push('name = ?'); params.push(name) }
       if (price !== undefined) { updates.push('price = ?'); params.push(price) }
+      if (cost !== undefined) { updates.push('cost = ?'); params.push(cost) }
       if (stock !== undefined) { updates.push('stock = ?'); params.push(stock) }
       
       if (updates.length === 0) return callback(new Error('No fields to update'))
@@ -146,7 +148,7 @@ module.exports = {
       
       const result = db.exec('SELECT * FROM products WHERE id = ?', [id])
       const product = result.length > 0 && result[0].values.length > 0 ? {
-        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], stock: result[0].values[0][3]
+        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], cost: result[0].values[0][3], stock: result[0].values[0][4]
       } : null
       saveDb()
       callback(null, product)
@@ -237,18 +239,94 @@ module.exports = {
     } catch (e) { callback(e) }
   },
   
-  createProduct: ({ name, price, stock }, callback) => {
+  createProduct: ({ name, price, cost, stock }, callback) => {
     try {
       // Get max ID to avoid conflicts
       const result = db.exec('SELECT MAX(id) as maxId FROM products')
       const maxId = result.length > 0 && result[0].values.length > 0 && result[0].values[0][0] ? result[0].values[0][0] : 0
       const newId = maxId + 1
       
-      db.run('INSERT INTO products (id, name, price, stock) VALUES (?, ?, ?, ?)', [newId, name, price, stock])
+      db.run('INSERT INTO products (id, name, price, cost, stock) VALUES (?, ?, ?, ?, ?)', [newId, name, price, cost || 0, stock])
       saveDb()
       
-      const product = { id: newId, name, price, stock }
+      const product = { id: newId, name, price, cost: cost || 0, stock }
       callback(null, product)
+    } catch (e) { callback(e) }
+  },
+  
+  getProfitLoss: (callback) => {
+    try {
+      // Get all completed orders with items
+      const ordersResult = db.exec('SELECT * FROM orders')
+      if (ordersResult.length === 0 || ordersResult[0].values.length === 0) {
+        return callback(null, {
+          totalRevenue: 0,
+          totalCost: 0,
+          totalProfit: 0,
+          orderCount: 0,
+          productSales: []
+        })
+      }
+      
+      const orders = ordersResult[0].values.map(row => ({
+        id: row[0], total: row[1], status: row[2]
+      }))
+      
+      let totalRevenue = 0
+      let totalCost = 0
+      const productSales = {}
+      
+      orders.forEach(order => {
+        totalRevenue += order.total
+        
+        // Get order items
+        const itemsResult = db.exec('SELECT product_id, qty, price_at FROM order_items WHERE order_id = ?', [order.id])
+        if (itemsResult.length > 0) {
+          itemsResult[0].values.forEach(item => {
+            const productId = item[0]
+            const qty = item[1]
+            const priceAt = item[2]
+            
+            // Get product cost
+            const prodResult = db.exec('SELECT name, cost FROM products WHERE id = ?', [productId])
+            if (prodResult.length > 0 && prodResult[0].values.length > 0) {
+              const productName = prodResult[0].values[0][0]
+              const cost = prodResult[0].values[0][1] || 0
+              const itemCost = cost * qty
+              const itemRevenue = priceAt * qty
+              const itemProfit = itemRevenue - itemCost
+              
+              totalCost += itemCost
+              
+              if (!productSales[productId]) {
+                productSales[productId] = {
+                  id: productId,
+                  name: productName,
+                  unitsSold: 0,
+                  revenue: 0,
+                  cost: 0,
+                  profit: 0
+                }
+              }
+              
+              productSales[productId].unitsSold += qty
+              productSales[productId].revenue += itemRevenue
+              productSales[productId].cost += itemCost
+              productSales[productId].profit += itemProfit
+            }
+          })
+        }
+      })
+      
+      const report = {
+        totalRevenue,
+        totalCost,
+        totalProfit: totalRevenue - totalCost,
+        orderCount: orders.length,
+        productSales: Object.values(productSales).sort((a, b) => b.profit - a.profit)
+      }
+      
+      callback(null, report)
     } catch (e) { callback(e) }
   }
 }
