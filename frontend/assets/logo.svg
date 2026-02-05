@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a4a8a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e7bc9;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="url(#grad1)"/>
+  
+  <!-- Bottle shape representing beverages -->
+  <path d="M 85 40 L 85 50 L 75 50 L 75 140 Q 75 160 100 160 Q 125 160 125 140 L 125 50 L 115 50 L 115 40 Z" fill="#ffcc00" stroke="#fff" stroke-width="2"/>
+  
+  <!-- Water cap -->
+  <rect x="90" y="30" width="20" height="12" rx="2" fill="#fff"/>
+  
+  <!-- Text -->
+  <text x="100" y="175" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#0a4a8a" text-anchor="middle">BSK@L</text>
+</svg>

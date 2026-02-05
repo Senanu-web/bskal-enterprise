@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en" data-api-base="">
+<head>
+  <meta charset="UTF-8" />
+  <title>BSK@L Enterprise</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <header>
+    <div class="top">
+      <img id="logo" src="assets/logo.svg" alt="BSK@L Enterprise" />
+      <div>
+        <h1>BSK@L Enterprise</h1>
+        <div class="contacts">Kasoa Timber Market • Abigail: +233593810461 • Alexander: +233593810461</div>
+      </div>
+    </div>
+    <nav>
+      <button id="viewCatalog">🛍️ Catalog</button>
+      <button id="viewCart">🛒 Cart (<span id="cartCount">0</span>)</button>
+      <button id="viewMyOrders">📦 My Orders</button>
+      <button id="viewTrack">🔍 Track Order</button>
+      <a class="adminLink" href="/admin.html">Admin</a>
+    </nav>
+  </header>
+
+  <main id="app">
+    <section id="catalog">
+      <h2 class="category-header">🥤 Beverages & Drinks</h2>
+      <div id="beverages-grid"></div>
+      <h2 class="category-header">🐟 Fresh Meats & Fish (per Kg)</h2>
+      <div id="meats-grid"></div>
+    </section>
+    <section id="cart" class="hidden"></section>
+    <section id="checkout" class="hidden"></section>
+    <section id="track" class="hidden"></section>
+    <section id="confirmation" class="hidden"></section>
+    <section id="myOrders" class="hidden"></section>
+  </main>
+
+  <footer>Location: Kasoa Timber Market (Ghana) • BSK@L Enterprise - Wholesale & Retail of Mineral Drinks & Water</footer>
+
+  <script src="https://js.stripe.com/v3/"></script>
+  <script src="js/apps.js"></script>
+</body>
+</html>

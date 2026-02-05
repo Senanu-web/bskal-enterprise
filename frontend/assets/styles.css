@@ -1,0 +1,45 @@
+:root { --primary: #0a4a8a; --accent: #ffcc00; --success: #28a745; --bg: #f6f8fa; --danger: #dc3545 }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 0; margin: 0; background:var(--bg); line-height: 1.6 }
+header { background: linear-gradient(135deg, var(--primary) 0%, #1565c0 100%); color: white; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1) }
+header .top { display:flex; gap:16px; align-items:center; max-width:1200px; margin:0 auto }
+header img#logo { width:80px; height:80px; object-fit:contain; background: #fff; padding:8px; border-radius:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1) }
+header h1 { margin:0; font-size: 1.8rem; font-weight: 600 }
+header .contacts { font-size: 0.9rem; opacity: 0.95; margin-top: 4px }
+header nav { margin-top:12px; text-align:center; display: flex; gap: 8px; justify-content: center; flex-wrap: wrap }
+nav button, nav a.adminLink { margin:4px; padding:10px 20px; border-radius:8px; border:0; background:var(--accent); color:#000; cursor:pointer; text-decoration:none; font-weight: 600; transition: all 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1) }
+nav button:hover, nav a.adminLink:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2) }
+#app { max-width:1200px; margin:24px auto; padding:0 16px }
+.category-header { font-size: 1.5rem; font-weight: 600; margin: 24px 0 16px 0; padding-bottom: 8px; border-bottom: 3px solid var(--primary); color: var(--primary) }
+#catalog { display:grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap:16px; margin-bottom: 32px }
+.card { background: #fff; border: 1px solid #e0e0e0; border-radius: 12px; padding: 16px; margin: 8px 0; box-shadow:0 2px 8px rgba(0,0,0,0.08); transition: all 0.2s }
+.card:hover { box-shadow:0 4px 16px rgba(0,0,0,0.12); transform: translateY(-2px) }
+.product-name { font-weight: 600; font-size: 1.1rem; color: #333; margin-bottom: 8px }
+.product-price { font-size: 1.3rem; font-weight: 700; color: var(--primary); margin: 8px 0 }
+.product-stock { font-size: 0.9rem; color: #666; margin-bottom: 12px }
+.actions { margin-top:12px; display: flex; gap: 8px; align-items: center }
+.actions input { padding: 8px; border: 1px solid #ddd; border-radius: 6px; width: 70px; font-size: 1rem }
+button.addBtn { background:var(--success); color:#fff; border:0; padding:10px 16px; border-radius:6px; cursor:pointer; font-weight: 600; flex: 1; transition: all 0.2s }
+button.addBtn:hover { background: #218838; transform: scale(1.02) }
+button.remove { background:var(--danger); color:#fff; border:0; padding:8px 12px; border-radius:6px; cursor:pointer }
+#checkoutBtn, #placeOrder, #doTrack { background:var(--primary); color:#fff; border:0; padding:12px 24px; border-radius:8px; cursor:pointer; font-size: 1.1rem; font-weight: 600; transition: all 0.2s; margin-top: 16px }
+#checkoutBtn:hover, #placeOrder:hover, #doTrack:hover { background: #0d47a1; transform: scale(1.02) }
+.checkout-form label { display: block; margin: 16px 0 8px 0; font-weight: 600; color: #333 }
+.checkout-form input, .checkout-form select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box }
+.payment-instructions { background: #fff3cd; border: 1px solid #ffc107; padding: 12px; border-radius: 6px; margin: 12px 0; font-size: 0.95rem }
+.receipt { background: #fff; border: 2px solid var(--primary); border-radius: 12px; padding: 24px; margin: 16px 0 }
+.receipt-header { text-align: center; border-bottom: 2px solid var(--primary); padding-bottom: 16px; margin-bottom: 16px }
+.receipt-header h2 { margin: 0; color: var(--primary) }
+.receipt-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee }
+.receipt-total { font-size: 1.3rem; font-weight: 700; color: var(--primary); margin-top: 16px }
+.hidden { display:none }
+footer { text-align:center; padding:20px 0; color:#555; margin-top:48px; background: #fff; border-top: 1px solid #ddd }
+
+/* admin page */
+.admin-wrap { max-width:900px; margin:24px auto }
+.admin-controls { display:flex; gap:12px; margin-bottom:12px }
+.admin-controls input { padding:8px }
+.admin-table { width:100%; border-collapse:collapse }
+.admin-table th, .admin-table td { border:1px solid #ddd; padding:8px }
+.admin-table th { background:#fafafa }
+
+@media (max-width:600px){ header .top{flex-direction:column;gap:8px} }

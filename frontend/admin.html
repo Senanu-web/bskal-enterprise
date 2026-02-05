@@ -1,0 +1,37 @@
+<!doctype html>
+<html data-api-base="">
+<head>
+  <meta charset="utf-8" />
+  <title>BSK@L Enterprise - Admin</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <header>
+    <div class="top">
+      <img id="logo" src="assets/logo.svg" alt="BSK@L Enterprise" />
+      <div>
+        <h1>Admin — BSK@L Enterprise</h1>
+        <div class="contacts">Protected area — use admin token to operate</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-wrap">
+    <div class="admin-controls">
+      <input id="adminToken" placeholder="Admin token (default: admin123)" />
+      <button id="setToken">Set Token</button>
+      <button id="loadProducts">Load Products</button>
+      <button id="loadOrders">Load Orders</button>
+    </div>
+
+    <h2>Products</h2>
+    <div id="products"></div>
+
+    <h2>Orders</h2>
+    <div id="orders"></div>
+  </main>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>

@@ -1,0 +1,526 @@
+const apiBaseFromDom = document.documentElement?.dataset?.apiBase?.trim() || ''
+const API_BASE = (window.API_BASE || apiBaseFromDom || '').trim() || `${location.origin}/api`
+let products = []
+let cart = []
+let stripe = null
+let elements = null
+let cardElement = null
+let stripeConfig = null
+
+function loadCartSafely() {
+  try {
+    const raw = localStorage.getItem('cart') || '[]'
+    const parsed = JSON.parse(raw)
+    cart = Array.isArray(parsed) ? parsed : []
+  } catch (e) {
+    console.warn('Invalid cart data in localStorage, resetting cart.', e)
+    cart = []
+    localStorage.removeItem('cart')
+  }
+}
+
+function saveCart() { localStorage.setItem('cart', JSON.stringify(cart)); updateCartCount() }
+function updateCartCount() { document.getElementById('cartCount').innerText = cart.reduce((s,i)=>s+Number(i.qty),0) }
+
+async function initStripe() {
+  try {
+    const res = await fetch(`${API_BASE}/stripe-config`)
+    stripeConfig = await res.json()
+    if (stripeConfig.publishableKey) {
+      stripe = Stripe(stripeConfig.publishableKey)
+      elements = stripe.elements()
+    }
+  } catch (e) { console.warn('Stripe not available', e) }
+}
+
+async function loadProducts() {
+  try {
+    const res = await fetch(`${API_BASE}/products`)
+    if (!res.ok) throw new Error(`Failed to load products (${res.status})`)
+    products = await res.json()
+    renderCatalog()
+    updateCartCount()
+  } catch (e) {
+    console.error('Failed to load products', e)
+    showCatalogMessage('Unable to load products. Please refresh or check your connection.', true)
+  }
+}
+
+function renderCatalog() {
+  const beveragesGrid = document.getElementById('beverages-grid')
+  const meatsGrid = document.getElementById('meats-grid')
+  
+  if (!beveragesGrid || !meatsGrid) {
+    console.warn('Category grids not found in DOM')
+    return
+  }
+  
+  beveragesGrid.innerHTML = ''
+  meatsGrid.innerHTML = ''
+  
+  if (!products || products.length === 0) {
+    showCatalogMessage('No products available right now. Please check back soon.', false)
+    return
+  }
+  
+  // Separate beverages (id < 100) and meats (id >= 100)
+  const beverages = products.filter(p => p.id < 100)
+  const meats = products.filter(p => p.id >= 100)
+  
+  beverages.forEach(p => {
+    const el = document.createElement('div')
+    el.className = 'card'
+    el.innerHTML = `
+      <div class="product-name">${p.name}</div>
+      <div class="product-price">GH₵ ${p.price.toFixed(2)}</div>
+      <div class="product-stock">📦 ${p.stock} in stock</div>
+      <div class="actions">
+        <input type="number" min="1" max="${p.stock}" value="1" id="qty-${p.id}" />
+        <button data-id="${p.id}" class="addBtn">Add to Cart</button>
+      </div>`
+    beveragesGrid.appendChild(el)
+  })
+  
+  meats.forEach(p => {
+    const el = document.createElement('div')
+    el.className = 'card'
+    el.innerHTML = `
+      <div class="product-name">${p.name}</div>
+      <div class="product-price">GH₵ ${p.price.toFixed(2)} /kg</div>
+      <div class="product-stock">📦 ${p.stock} kg in stock</div>
+      <div class="actions">
+        <input type="number" min="0.5" step="0.5" max="${p.stock}" value="1" id="qty-${p.id}" />
+        <button data-id="${p.id}" class="addBtn">Add to Cart</button>
+      </div>`
+    meatsGrid.appendChild(el)
+  })
+  
+  document.querySelectorAll('.addBtn').forEach(b => b.addEventListener('click', addToCart))
+}
+
+function showCatalogMessage(message, isError) {
+  const root = document.getElementById('catalog')
+  const tone = isError ? 'style="color:#c00"' : ''
+  root.innerHTML = `<p ${tone}>${message}</p>`
+}
+
+function addToCart(e) {
+  const id = Number(e.target.dataset.id)
+  const qty = Number(document.getElementById(`qty-${id}`).value) || 1
+  const prod = products.find(p => p.id === id)
+  if (!prod) return alert('Product not found')
+  if (prod.stock < qty) return alert('Not enough stock')
+  const existing = cart.find(c => c.id === id)
+  if (existing) existing.qty += qty; else cart.push({ id, name: prod.name, price: prod.price, qty })
+  saveCart()
+  alert('Added to cart')
+}
+
+function showSection(name) {
+  document.querySelectorAll('#app > section').forEach(s => s.classList.add('hidden'))
+  document.getElementById(name).classList.remove('hidden')
+}
+
+function renderCart() {
+  const root = document.getElementById('cart')
+  if (cart.length === 0) { root.innerHTML = '<p>Your cart is empty.</p>'; return }
+  root.innerHTML = '<h2>Cart</h2>'
+  cart.forEach(item => {
+    root.innerHTML += `<div class="card"><strong>${item.name}</strong><div>GH₵ ${item.price} x ${item.qty} = GH₵ ${item.price*item.qty}</div><button class="remove" data-id="${item.id}">Remove</button></div>`
+  })
+  root.innerHTML += `<div class="card"><strong>Total: GH₵ ${cart.reduce((s,i)=>s+i.price*i.qty,0)}</strong></div><button id="checkoutBtn">Proceed to Checkout</button>`
+  document.querySelectorAll('.remove').forEach(b => b.addEventListener('click', (e)=>{ removeFromCart(Number(e.target.dataset.id)) }))
+  document.getElementById('checkoutBtn').addEventListener('click', showCheckout)
+}
+
+function removeFromCart(id) { cart = cart.filter(c => c.id !== id); saveCart(); renderCart() }
+
+function showCheckout() {
+  showSection('checkout')
+  const root = document.getElementById('checkout')
+  root.innerHTML = `
+    <h2>Checkout</h2>
+    <div class="card checkout-form">
+      <label>Full Name *</label>
+      <input id="custName" placeholder="Enter your full name" />
+      
+      <label>Phone Number * (WhatsApp)</label>
+      <input id="custPhone" placeholder="+233 XX XXX XXXX" />
+      
+      <label>Delivery Method *</label>
+      <select id="deliveryOpt">
+        <option value="pickup">🏪 Pickup at Kasoa Timber Market (Free)</option>
+        <option value="delivery">🚚 Home Delivery (GH₵ 10 - GH₵ 50)</option>
+      </select>
+      
+      <div id="addrDiv" style="display:none">
+        <label>Delivery Address *</label>
+        <input id="custAddr" placeholder="Enter your full address (area, street, house number)" />
+        <div style="margin-top:8px; font-size:0.9rem; color:#666">
+          📍 Delivery areas: Kasoa, Accra, Tema (GH₵ 10-30)<br>
+          ⏱️ Delivery time: Same day (order before 2pm) or next day
+        </div>
+      </div>
+      
+      <label style="margin-top:16px">Payment Method *</label>
+      <select id="payMethod">
+        <option value="mobile">📱 Mobile Money (MTN / Vodafone / AirtelTigo)</option>
+        <option value="card">💳 Card Payment (Visa/Mastercard)</option>
+        <option value="cash">💵 Cash on Delivery</option>
+      </select>
+      
+      <div id="mobileInfo" style="display:block">
+        <div class="payment-instructions">
+          <strong>📱 Mobile Money Payment Instructions:</strong><br><br>
+          <strong>MTN: *170#</strong> or <strong>Vodafone: *110#</strong><br>
+          1. Dial the code above<br>
+          2. Select "Send Money"<br>
+          3. Send to: <strong>0593810461</strong> (Abigail Abam)<br>
+          4. Amount: <strong>GH₵ <span id="totalAmount">0</span></strong><br>
+          5. Confirm and send<br>
+          6. Enter your reference number below
+        </div>
+        <label>Mobile Money Number *</label>
+        <input id="mobileNumber" placeholder="Your mobile money number" />
+        <label>Transaction Reference (after payment)</label>
+        <input id="momoRef" placeholder="Enter reference number from SMS" />
+      </div>
+      
+      <div id="cardInfo" style="display:none">
+        <label>Card Details</label>
+        <div id="card-element" style="margin-top:8px; padding:10px; border:1px solid #ddd; border-radius:6px"></div>
+        <div id="card-errors" role="alert" style="color:#c00;margin-top:8px"></div>
+      </div>
+      
+      <div id="cashInfo" style="display:none">
+        <div class="payment-instructions">
+          <strong>💵 Cash on Delivery:</strong><br>
+          Pay when you receive your order. Please have exact change ready.
+        </div>
+      </div>
+      
+      <button id="placeOrder">Place Order</button>
+    </div>`
+
+  // Update total amount
+  const total = cart.reduce((s,i)=>s+i.price*i.qty,0)
+  const deliveryCost = 10 // Will be calculated based on delivery method
+  const totalEl = document.getElementById('totalAmount')
+  if (totalEl) totalEl.innerText = total.toFixed(2)
+
+  document.getElementById('deliveryOpt').addEventListener('change', (e)=>{ 
+    document.getElementById('addrDiv').style.display = e.target.value==='delivery' ? 'block' : 'none' 
+  })
+  
+  document.getElementById('payMethod').addEventListener('change', (e)=>{
+    document.getElementById('cardInfo').style.display = e.target.value==='card' ? 'block' : 'none'
+    document.getElementById('mobileInfo').style.display = e.target.value==='mobile' ? 'block' : 'none'
+    document.getElementById('cashInfo').style.display = e.target.value==='cash' ? 'block' : 'none'
+    if (e.target.value === 'card' && stripe && !cardElement) mountCard()
+  })
+
+  if (stripe) mountCard()
+  document.getElementById('placeOrder').addEventListener('click', placeOrder)
+}
+
+function mountCard() {
+  if (!elements) return
+  cardElement = elements.create('card')
+  cardElement.mount('#card-element')
+}
+
+async function placeOrder() {
+  const name = document.getElementById('custName').value.trim()
+  const phone = document.getElementById('custPhone').value.trim()
+  const deliveryOpt = document.getElementById('deliveryOpt').value
+  const address = document.getElementById('custAddr') ? document.getElementById('custAddr').value : ''
+  const payMethod = document.getElementById('payMethod').value
+  if (!name || !phone) return alert('Please provide name and phone')
+
+  // Card flow with Stripe
+  if (payMethod === 'card' && stripe) {
+    try {
+      // create payment intent
+      const itemsPayload = { items: cart.map(c => ({ id: c.id, qty: c.qty })) }
+      const piRes = await fetch(`${API_BASE}/create-payment-intent`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(itemsPayload) })
+      const piData = await piRes.json()
+      if (!piRes.ok) return alert(piData.error || 'Failed to create payment intent')
+
+      const { clientSecret, id: paymentIntentId } = piData
+      const result = await stripe.confirmPayment({
+        elements,
+        clientSecret,
+        confirmParams: {
+          return_url: `${location.origin}/`,
+          payment_method_data: {
+            billing_details: { name, phone }
+          }
+        }
+      })
+      if (result.error) return alert(result.error.message || 'Payment failed')
+      if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
+        // place order on server now that payment succeeded
+        const payload = {
+          customer: { name, phone },
+          items: cart.map(c => ({ id: c.id, qty: c.qty })),
+          delivery: { method: deliveryOpt, address },
+          payment: { method: 'card', stripePaymentIntentId: paymentIntentId }
+        }
+        const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+        const data = await res.json()
+        if (!res.ok) return alert(data.error || 'Order submission failed')
+        cart = []
+        saveCart()
+        showConfirmation(data.order)
+      } else {
+        alert('Payment did not succeed')
+      }
+    } catch (e) { console.error(e); alert('Payment failed') }
+    return
+  }
+
+  // Mobile or fallback flow (mock)
+  const momoNumber = document.getElementById('mobileNumber')?.value || ''
+  const momoRef = document.getElementById('momoRef')?.value || ''
+  
+  const payload = {
+    customer: { name, phone },
+    items: cart.map(c => ({ id: c.id, qty: c.qty })),
+    delivery: { method: deliveryOpt, address },
+    payment: { 
+      method: payMethod, 
+      details: payMethod==='mobile' ? { phone: momoNumber, reference: momoRef } : 
+               payMethod==='cash' ? { type: 'cash_on_delivery' } :
+               { card: 'mock' }
+    }
+  }
+  try {
+    const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    const data = await res.json()
+    if (!res.ok) return alert(data.error || 'Order failed')
+    cart = []
+    saveCart()
+    showConfirmation(data.order)
+  } catch (e) { console.error(e); alert('Failed to place order') }
+}
+
+function showConfirmation(order) {
+  showSection('confirmation')
+  const root = document.getElementById('confirmation')
+  
+  // Calculate delivery date
+  const now = new Date()
+  const cutoffHour = 14 // 2pm
+  const orderTime = now.getHours()
+  const deliveryDate = new Date(now)
+  
+  if (order.delivery.method === 'delivery') {
+    // If ordered after 2pm, deliver next day
+    if (orderTime >= cutoffHour) {
+      deliveryDate.setDate(deliveryDate.getDate() + 1)
+    }
+  }
+  
+  const deliveryDateStr = deliveryDate.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  
+  // Find product names for items
+  const itemsHtml = (order.items || []).map(item => {
+    const prod = products.find(p => p.id === item.product_id) || { name: 'Product' }
+    return `
+      <div class="receipt-row">
+        <span>${prod.name} x ${item.qty}</span>
+        <span>GH₵ ${(item.price_at * item.qty).toFixed(2)}</span>
+      </div>
+    `
+  }).join('')
+  
+  root.innerHTML = `
+    <div class="receipt">
+      <div class="receipt-header">
+        <h2>🎉 ORDER CONFIRMED!</h2>
+        <p style="margin:8px 0; color:#666">Thank you for your order</p>
+      </div>
+      
+      <div class="receipt-row" style="background:#f8f9fa; font-weight:600">
+        <span>Order ID:</span>
+        <span>#${order.id}</span>
+      </div>
+      
+      <div class="receipt-row">
+        <span>Customer:</span>
+        <span>${order.customer.name}</span>
+      </div>
+      
+      <div class="receipt-row">
+        <span>Phone:</span>
+        <span>${order.customer.phone}</span>
+      </div>
+      
+      <div class="receipt-row">
+        <span>Delivery:</span>
+        <span>${order.delivery.method === 'pickup' ? '🏪 Pickup' : '🚚 Delivery'}</span>
+      </div>
+      
+      ${order.delivery.method === 'delivery' ? `
+        <div class="receipt-row">
+          <span>Address:</span>
+          <span style="font-size:0.9rem">${order.delivery.address || 'N/A'}</span>
+        </div>
+        <div class="receipt-row" style="background:#e8f5e9">
+          <span>📅 Estimated Delivery:</span>
+          <span style="font-weight:600">${deliveryDateStr}</span>
+        </div>
+      ` : ''}
+      
+      <div class="receipt-row">
+        <span>Payment:</span>
+        <span>${order.payment.method === 'mobile' ? '📱 Mobile Money' : order.payment.method === 'cash' ? '💵 Cash' : '💳 Card'}</span>
+      </div>
+      
+      <div class="receipt-row">
+        <span>Status:</span>
+        <span style="color:var(--success); font-weight:600">${order.status}</span>
+      </div>
+      
+      <div style="margin:24px 0 16px 0; padding-top:16px; border-top:2px solid #eee">
+        <strong style="font-size:1.1rem">Order Items:</strong>
+      </div>
+      
+      ${itemsHtml}
+      
+      <div class="receipt-total" style="text-align:right; border-top:2px solid var(--primary); padding-top:16px; margin-top:16px">
+        TOTAL: GH₵ ${order.total.toFixed(2)}
+      </div>
+      
+      <div style="margin-top:24px; padding:16px; background:#f8f9fa; border-radius:8px; text-align:center">
+        <p style="margin:0; font-weight:600; color:var(--primary)">📱 Track your order anytime!</p>
+        <p style="margin:8px 0 0 0; font-size:0.95rem">Use Order ID <strong>#${order.id}</strong> or your phone number</p>
+      </div>
+      
+      <div style="margin-top:16px; text-align:center">
+        <button onclick="window.print()" style="background:var(--accent); color:#000; border:0; padding:12px 24px; border-radius:8px; cursor:pointer; font-weight:600; margin-right:8px">
+          🖨️ Print Receipt
+        </button>
+        <button onclick="location.reload()" style="background:var(--primary); color:#fff; border:0; padding:12px 24px; border-radius:8px; cursor:pointer; font-weight:600">
+          🛒 New Order
+        </button>
+      </div>
+    </div>
+    
+    <div style="margin-top:24px; padding:16px; background:#fff; border:1px solid #ddd; border-radius:8px">
+      <strong>📞 Questions? Contact us:</strong><br>
+      Abigail: <a href="tel:+233593810461">+233 59 381 0461</a><br>
+      Alexander: <a href="tel:+233593810461">+233 59 381 0461</a><br>
+      Location: Kasoa Timber Market, Ghana
+    </div>
+  `
+}
+
+async function renderTrack() {
+  showSection('track')
+  const root = document.getElementById('track')
+  root.innerHTML = `
+    <h2>Track Order</h2>
+    <div class="card">
+      <label>Order ID</label>
+      <input id="trackId" placeholder="Enter your order ID (e.g., 1234)" />
+      <button id="doTrack">Track Order</button>
+      <div id="trackResult" style="margin-top:16px"></div>
+    </div>`
+  document.getElementById('doTrack').addEventListener('click', async ()=>{
+    const id = document.getElementById('trackId').value
+    if (!id) return alert('Enter order id')
+    try {
+      const res = await fetch(`${API_BASE}/orders/${id}`)
+      if (!res.ok) {
+        document.getElementById('trackResult').innerHTML = '<p style="color:var(--danger)">Order not found</p>'
+        return
+      }
+      const data = await res.json()
+      document.getElementById('trackResult').innerHTML = `
+        <div class="card" style="background:#e8f5e9">
+          <strong>Order #${data.id}</strong><br>
+          Status: <span style="font-weight:600; color:var(--primary)">${data.status}</span><br>
+          Total: GH₵ ${data.total.toFixed(2)}<br>
+          Customer: ${data.customer?.name || 'N/A'}
+        </div>
+      `
+    } catch (e) { 
+      console.error(e)
+      document.getElementById('trackResult').innerHTML = '<p style="color:var(--danger)">Error fetching order</p>'
+    }
+  })
+}
+
+async function renderMyOrders() {
+  showSection('myOrders')
+  const root = document.getElementById('myOrders')
+  root.innerHTML = `
+    <h2>📦 My Orders</h2>
+    <div class="card">
+      <label>Enter Your Phone Number</label>
+      <input id="myPhone" placeholder="+233 XX XXX XXXX" />
+      <button id="findMyOrders" style="background:var(--primary); color:#fff; border:0; padding:12px 24px; border-radius:8px; cursor:pointer; font-weight:600; margin-top:12px">
+        Find My Orders
+      </button>
+      <div id="myOrdersList" style="margin-top:24px"></div>
+    </div>`
+  
+  document.getElementById('findMyOrders').addEventListener('click', async ()=>{
+    const phone = document.getElementById('myPhone').value.trim()
+    if (!phone) return alert('Please enter your phone number')
+    
+    const resultDiv = document.getElementById('myOrdersList')
+    resultDiv.innerHTML = '<p>Loading...</p>'
+    
+    try {
+      // Fetch all orders (in real app, backend should filter by phone)
+      const res = await fetch(`${API_BASE}/orders`)
+      if (!res.ok) throw new Error('Failed to fetch orders')
+      
+      const allOrders = await res.json()
+      const myOrders = allOrders.filter(o => o.customer?.phone?.includes(phone.replace(/\s/g, '')))
+      
+      if (myOrders.length === 0) {
+        resultDiv.innerHTML = '<p style="color:#666">No orders found for this phone number</p>'
+        return
+      }
+      
+      resultDiv.innerHTML = '<h3 style="margin-bottom:16px">Your Orders</h3>' + myOrders.map(order => `
+        <div class="card" style="margin-bottom:16px">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px">
+            <strong>Order #${order.id}</strong>
+            <span style="color:var(--primary); font-weight:600">${order.status}</span>
+          </div>
+          <div>Total: <strong>GH₵ ${order.total.toFixed(2)}</strong></div>
+          <div style="font-size:0.9rem; color:#666">
+            ${order.delivery?.method === 'delivery' ? '🚚 Delivery' : '🏪 Pickup'} • 
+            ${new Date(order.createdAt).toLocaleDateString('en-GB')}
+          </div>
+          <div style="margin-top:8px">
+            ${(order.items || []).map(item => {
+              const prod = products.find(p => p.id === item.product_id)
+              return `<div style="font-size:0.9rem">• ${prod?.name || 'Product'} x ${item.qty}</div>`
+            }).join('')}
+          </div>
+        </div>
+      `).join('')
+      
+    } catch (e) {
+      console.error(e)
+      resultDiv.innerHTML = '<p style="color:var(--danger)">Error loading orders. Please try again.</p>'
+    }
+  })
+}
+
+// Navigation
+window.addEventListener('DOMContentLoaded', async () => {
+  loadCartSafely()
+  document.getElementById('viewCatalog').addEventListener('click', ()=>{ showSection('catalog') })
+  document.getElementById('viewCart').addEventListener('click', ()=>{ renderCart(); showSection('cart') })
+  document.getElementById('viewMyOrders').addEventListener('click', ()=>{ renderMyOrders() })
+  document.getElementById('viewTrack').addEventListener('click', ()=>{ renderTrack() })
+  // Admin link is plain anchor to /admin.html
+  await initStripe()
+  loadProducts()
+})
