@@ -66,6 +66,35 @@ window.addEventListener('DOMContentLoaded', () => {
     if (res.error) return alert(res.error)
     renderOrders(res)
   })
+  
+  document.getElementById('addProduct').addEventListener('click', async () => {
+    const name = document.getElementById('newProductName').value.trim()
+    const price = Number(document.getElementById('newProductPrice').value)
+    const stock = Number(document.getElementById('newProductStock').value)
+    
+    if (!name) return alert('Enter product name')
+    if (!price || price <= 0) return alert('Enter valid price')
+    if (stock === undefined || stock < 0) return alert('Enter valid stock')
+    
+    const res = await fetchWithToken('/admin/products', { 
+      method: 'POST', 
+      body: JSON.stringify({ name, price, stock }) 
+    })
+    
+    if (res.error) return alert(res.error)
+    
+    alert(`Product "${res.product.name}" added successfully! (ID: ${res.product.id})`)
+    
+    // Clear form
+    document.getElementById('newProductName').value = ''
+    document.getElementById('newProductPrice').value = ''
+    document.getElementById('newProductStock').value = ''
+    
+    // Reload products
+    const products = await fetchWithToken('/admin/products')
+    if (!products.error) renderProducts(products)
+  })
+  
   // prefill token input with saved
   document.getElementById('adminToken').value = localStorage.getItem('adminToken') || ''
 })

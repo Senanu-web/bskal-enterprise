@@ -166,6 +166,18 @@ app.post('/api/admin/orders/:id/status', checkAdmin, (req, res) => {
   })
 })
 
+// Create new product
+app.post('/api/admin/products', checkAdmin, (req, res) => {
+  const { name, price, stock } = req.body
+  if (!name || !price || stock === undefined) {
+    return res.status(400).json({ error: 'Missing required fields: name, price, stock' })
+  }
+  db.createProduct({ name, price: Number(price), stock: Number(stock) }, (err, product) => {
+    if (err) return res.status(500).json({ error: err.message })
+    res.json({ ok: true, product })
+  })
+})
+
 // Serve frontend static files for simple deployments
 app.use(express.static(path.join(__dirname, '..', 'frontend')))
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html')))

@@ -212,5 +212,20 @@ module.exports = {
       saveDb()
       module.exports.getOrderById(id, callback)
     } catch (e) { callback(e) }
+  },
+  
+  createProduct: ({ name, price, stock }, callback) => {
+    try {
+      // Get max ID to avoid conflicts
+      const result = db.exec('SELECT MAX(id) as maxId FROM products')
+      const maxId = result.length > 0 && result[0].values.length > 0 && result[0].values[0][0] ? result[0].values[0][0] : 0
+      const newId = maxId + 1
+      
+      db.run('INSERT INTO products (id, name, price, stock) VALUES (?, ?, ?, ?)', [newId, name, price, stock])
+      saveDb()
+      
+      const product = { id: newId, name, price, stock }
+      callback(null, product)
+    } catch (e) { callback(e) }
   }
 }
