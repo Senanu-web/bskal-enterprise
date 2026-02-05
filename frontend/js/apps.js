@@ -175,7 +175,7 @@ function showCheckout() {
           <strong>MTN: *170#</strong> or <strong>Vodafone: *110#</strong><br>
           1. Dial the code above<br>
           2. Select "Send Money"<br>
-          3. Send to: <strong>0593810461</strong> (Abigail Abam)<br>
+          3. Send to: <strong>0593810461</strong> (Hagar Kwankyewaa)<br>
           4. Amount: <strong>GH₵ <span id="totalAmount">0</span></strong><br>
           5. Confirm and send<br>
           6. Enter your reference number below
