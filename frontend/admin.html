@@ -24,6 +24,34 @@
       <button id="loadProducts">Load Products</button>
       <button id="loadOrders">Load Orders</button>
       <button id="loadProfitLoss">View Profit/Loss</button>
+      <button id="loadWeeklySales">View Weekly Sales</button>
+    </div>
+
+    <div id="weeklySalesSection" style="display:none; margin-bottom:32px">
+      <h2>📊 Weekly Sales Report</h2>
+      <div class="card" style="padding:16px; background:linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color:#fff; margin-bottom:16px">
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:16px">
+          <div>
+            <div style="opacity:0.9; font-size:14px">This Week</div>
+            <div id="currentWeekItems" style="font-size:28px; font-weight:700; margin-top:4px">0 items</div>
+            <div id="currentWeekOrders" style="opacity:0.9; font-size:14px; margin-top:4px">0 orders</div>
+          </div>
+          <div>
+            <div style="opacity:0.9; font-size:14px">Last Week</div>
+            <div id="lastWeekItems" style="font-size:28px; font-weight:700; margin-top:4px">0 items</div>
+            <div id="lastWeekOrders" style="opacity:0.9; font-size:14px; margin-top:4px">0 orders</div>
+          </div>
+          <div>
+            <div style="opacity:0.9; font-size:14px">Week Comparison</div>
+            <div id="weekComparison" style="font-size:28px; font-weight:700; margin-top:4px">-</div>
+            <div style="opacity:0.9; font-size:14px; margin-top:4px">vs last week</div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:16px">
+        <h3 style="margin-top:0">📈 Last 8 Weeks History</h3>
+        <div id="weeklyHistory"></div>
+      </div>
     </div>
 
     <div id="profitLossSection" style="display:none; margin-bottom:32px">

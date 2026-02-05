@@ -328,5 +328,93 @@ module.exports = {
       
       callback(null, report)
     } catch (e) { callback(e) }
+  },
+  
+  getWeeklySales: (callback) => {
+    try {
+      // Get all orders
+      const ordersResult = db.exec('SELECT * FROM orders')
+      if (ordersResult.length === 0 || ordersResult[0].values.length === 0) {
+        return callback(null, {
+          currentWeek: { itemsSold: 0, orders: 0, revenue: 0 },
+          lastWeek: { itemsSold: 0, orders: 0, revenue: 0 },
+          weeks: []
+        })
+      }
+      
+      const orders = ordersResult[0].values.map(row => ({
+        id: row[0], 
+        total: row[1], 
+        status: row[2],
+        createdAt: row[6] || new Date().toISOString()
+      }))
+      
+      // Calculate week boundaries
+      const now = new Date()
+      const currentWeekStart = new Date(now)
+      currentWeekStart.setDate(now.getDate() - now.getDay()) // Start of this week (Sunday)
+      currentWeekStart.setHours(0, 0, 0, 0)
+      
+      const lastWeekStart = new Date(currentWeekStart)
+      lastWeekStart.setDate(lastWeekStart.getDate() - 7)
+      
+      const lastWeekEnd = new Date(currentWeekStart)
+      lastWeekEnd.setMilliseconds(-1)
+      
+      let currentWeekStats = { itemsSold: 0, orders: 0, revenue: 0 }
+      let lastWeekStats = { itemsSold: 0, orders: 0, revenue: 0 }
+      const weeklyData = {}
+      
+      orders.forEach(order => {
+        const orderDate = new Date(order.createdAt)
+        const orderWeekStart = new Date(orderDate)
+        orderWeekStart.setDate(orderDate.getDate() - orderDate.getDay())
+        orderWeekStart.setHours(0, 0, 0, 0)
+        const weekKey = orderWeekStart.toISOString().split('T')[0]
+        
+        // Get order items count
+        const itemsResult = db.exec('SELECT SUM(qty) as total FROM order_items WHERE order_id = ?', [order.id])
+        const itemsCount = itemsResult.length > 0 && itemsResult[0].values.length > 0 && itemsResult[0].values[0][0] 
+          ? itemsResult[0].values[0][0] 
+          : 0
+        
+        // Track by week
+        if (!weeklyData[weekKey]) {
+          weeklyData[weekKey] = { 
+            weekStart: weekKey, 
+            itemsSold: 0, 
+            orders: 0, 
+            revenue: 0 
+          }
+        }
+        weeklyData[weekKey].itemsSold += itemsCount
+        weeklyData[weekKey].orders += 1
+        weeklyData[weekKey].revenue += order.total
+        
+        // Current week
+        if (orderDate >= currentWeekStart) {
+          currentWeekStats.itemsSold += itemsCount
+          currentWeekStats.orders += 1
+          currentWeekStats.revenue += order.total
+        }
+        // Last week
+        else if (orderDate >= lastWeekStart && orderDate <= lastWeekEnd) {
+          lastWeekStats.itemsSold += itemsCount
+          lastWeekStats.orders += 1
+          lastWeekStats.revenue += order.total
+        }
+      })
+      
+      // Sort weeks descending (most recent first)
+      const weeks = Object.values(weeklyData).sort((a, b) => 
+        new Date(b.weekStart) - new Date(a.weekStart)
+      ).slice(0, 8) // Last 8 weeks
+      
+      callback(null, {
+        currentWeek: currentWeekStats,
+        lastWeek: lastWeekStats,
+        weeks
+      })
+    } catch (e) { callback(e) }
   }
 }

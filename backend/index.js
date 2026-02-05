@@ -200,6 +200,14 @@ app.get('/api/admin/profit-loss', checkAdmin, (req, res) => {
   })
 })
 
+// Get weekly sales report
+app.get('/api/admin/weekly-sales', checkAdmin, (req, res) => {
+  db.getWeeklySales((err, report) => {
+    if (err) return res.status(500).json({ error: err.message })
+    res.json(report)
+  })
+})
+
 // Serve frontend static files for simple deployments
 app.use(express.static(path.join(__dirname, '..', 'frontend')))
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, '..', 'frontend', 'index.html')))

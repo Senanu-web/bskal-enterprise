@@ -168,6 +168,51 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   })
   
+  document.getElementById('loadWeeklySales').addEventListener('click', async () => {
+    const res = await fetchWithToken('/admin/weekly-sales')
+    if (res.error) return alert(res.error)
+    
+    // Show the section
+    document.getElementById('weeklySalesSection').style.display = 'block'
+    
+    // Update current week stats
+    document.getElementById('currentWeekItems').textContent = `${res.currentWeek.itemsSold} items`
+    document.getElementById('currentWeekOrders').textContent = `${res.currentWeek.orders} orders • GH₵ ${res.currentWeek.revenue.toFixed(2)}`
+    
+    // Update last week stats
+    document.getElementById('lastWeekItems').textContent = `${res.lastWeek.itemsSold} items`
+    document.getElementById('lastWeekOrders').textContent = `${res.lastWeek.orders} orders • GH₵ ${res.lastWeek.revenue.toFixed(2)}`
+    
+    // Calculate comparison
+    const diff = res.currentWeek.itemsSold - res.lastWeek.itemsSold
+    const percentChange = res.lastWeek.itemsSold > 0 
+      ? ((diff / res.lastWeek.itemsSold) * 100).toFixed(1) 
+      : (res.currentWeek.itemsSold > 0 ? '+100' : '0')
+    const comparisonColor = diff >= 0 ? '#22c55e' : '#ef4444'
+    const arrow = diff >= 0 ? '↑' : '↓'
+    document.getElementById('weekComparison').innerHTML = `<span style="color:${comparisonColor}">${arrow} ${Math.abs(diff)} (${percentChange}%)</span>`
+    
+    // Render weekly history table
+    const historyEl = document.getElementById('weeklyHistory')
+    if (!res.weeks || res.weeks.length === 0) {
+      historyEl.innerHTML = '<p style="color:#666">No sales history available yet.</p>'
+    } else {
+      let html = '<table class="admin-table"><tr><th>Week Starting</th><th>Items Sold</th><th>Orders</th><th>Revenue</th></tr>'
+      res.weeks.forEach(week => {
+        const weekDate = new Date(week.weekStart)
+        const weekLabel = weekDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        html += `<tr>
+          <td>${weekLabel}</td>
+          <td style="font-weight:600">${week.itemsSold}</td>
+          <td>${week.orders}</td>
+          <td>GH₵ ${week.revenue.toFixed(2)}</td>
+        </tr>`
+      })
+      html += '</table>'
+      historyEl.innerHTML = html
+    }
+  })
+  
   document.getElementById('addProduct').addEventListener('click', async () => {
     const name = document.getElementById('newProductName').value.trim()
     const price = Number(document.getElementById('newProductPrice').value)
