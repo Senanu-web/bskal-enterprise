@@ -11,17 +11,33 @@ async function fetchWithToken(path, opts = {}) {
   return res.json()
 }
 
+// Calculate profit margin percentage
+function calculateMargin(sellPrice, costPrice) {
+  if (!sellPrice || sellPrice <= 0) return 0
+  const profit = sellPrice - costPrice
+  return (profit / sellPrice * 100).toFixed(1)
+}
+
+// Calculate profit per unit
+function calculateProfit(sellPrice, costPrice) {
+  return (sellPrice - costPrice).toFixed(2)
+}
+
 function renderProducts(list) {
   const el = document.getElementById('products')
   if (!list || list.length === 0) { el.innerHTML = '<p>No products</p>'; return }
-  let html = '<table class="admin-table"><tr><th>ID</th><th>Name</th><th>Sell Price (GH₵)</th><th>Cost Price (GH₵)</th><th>Stock</th><th>Actions</th></tr>'
+  let html = '<table class="admin-table"><tr><th>ID</th><th>Name</th><th>Sell Price (GH₵)</th><th>Cost Price (GH₵)</th><th>Profit/Unit</th><th>Margin %</th><th>Stock</th><th>Actions</th></tr>'
   list.forEach(p => {
-    const margin = p.price > p.cost ? ((p.price - p.cost) / p.price * 100).toFixed(1) : 0
+    const margin = calculateMargin(p.price, p.cost || 0)
+    const profit = calculateProfit(p.price, p.cost || 0)
+    const marginColor = margin >= 30 ? '#22c55e' : margin >= 15 ? '#f59e0b' : '#ef4444'
     html += `<tr>
       <td>${p.id}</td>
       <td><input id="name-${p.id}" value="${p.name}" style="width:100%" /></td>
       <td><input id="price-${p.id}" type="number" step="0.01" value="${p.price}" style="width:80px" /></td>
-      <td><input id="cost-${p.id}" type="number" step="0.01" value="${p.cost || 0}" style="width:80px" title="Margin: ${margin}%" /></td>
+      <td><input id="cost-${p.id}" type="number" step="0.01" value="${p.cost || 0}" style="width:80px" /></td>
+      <td style="font-weight:600; color:${marginColor}">GH₵ ${profit}</td>
+      <td style="font-weight:600; color:${marginColor}">${margin}%</td>
       <td><input id="stock-${p.id}" type="number" step="0.5" value="${p.stock}" style="width:80px" /></td>
       <td>
         <button data-id="${p.id}" class="saveProduct" style="background:var(--primary); color:#fff; margin-right:4px">Save</button>
@@ -46,12 +62,25 @@ function renderProducts(list) {
     if (cost < 0) return alert('Cost cannot be negative')
     if (stock < 0) return alert('Stock cannot be negative')
     
+    // Warn if margin is too low
+    const margin = calculateMargin(price, cost)
+    if (margin < 10 && cost > 0) {
+      if (!confirm(`Warning: Low profit margin (${margin}%). Continue?`)) return
+    }
+    
     const res = await fetchWithToken(`/admin/products/${id}`, { 
       method: 'PUT', 
       body: JSON.stringify({ name, price, cost, stock }) 
     })
     if (res.error) return alert(res.error)
-    alert(`Product updated: ${res.product.name}`)
+    
+    const profit = calculateProfit(res.product.price, res.product.cost)
+    const newMargin = calculateMargin(res.product.price, res.product.cost)
+    alert(`Product updated: ${res.product.name}\nProfit per unit: GH₵ ${profit}\nMargin: ${newMargin}%`)
+    
+    // Reload products to update display
+    const products = await fetchWithToken('/admin/products')
+    if (!products.error) renderProducts(products)
   }))
   
   // Restock (add to existing stock)
@@ -150,6 +179,15 @@ window.addEventListener('DOMContentLoaded', () => {
     if (cost < 0) return alert('Cost price cannot be negative')
     if (stock === undefined || stock < 0) return alert('Enter valid stock')
     
+    // Calculate and show profit info
+    const profit = calculateProfit(price, cost)
+    const margin = calculateMargin(price, cost)
+    
+    // Warn if margin is too low
+    if (margin < 10 && cost > 0) {
+      if (!confirm(`Warning: Low profit margin (${margin}%).\nProfit per unit: GH₵ ${profit}\n\nContinue adding this product?`)) return
+    }
+    
     const res = await fetchWithToken('/admin/products', { 
       method: 'POST', 
       body: JSON.stringify({ name, price, cost, stock }) 
@@ -157,7 +195,7 @@ window.addEventListener('DOMContentLoaded', () => {
     
     if (res.error) return alert(res.error)
     
-    alert(`Product "${res.product.name}" added successfully! (ID: ${res.product.id})`)    
+    alert(`Product "${res.product.name}" added successfully!\n\nID: ${res.product.id}\nSelling Price: GH₵ ${price.toFixed(2)}\nCost Price: GH₵ ${cost.toFixed(2)}\nProfit per unit: GH₵ ${profit}\nMargin: ${margin}%`)    
     // Clear form
     document.getElementById('newProductName').value = ''
     document.getElementById('newProductPrice').value = ''
