@@ -1,0 +1,4 @@
+.env
+data.sqlitenode_modules/
+*.log
+.DS_Store
