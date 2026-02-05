@@ -116,6 +116,6 @@ npm run dev
 
 ## Support
 
-Contact: Abigail Abam (+233 59 381 0461) or Alexander Segbedzi (+233 59 381 0461)
+Contact: Abigail Abam (+233 59 381 0461) or Alexander Segbedzi (+233 55 298 0212)
 
 Location: Kasoa Timber Market, Ghana

@@ -410,7 +410,7 @@ function showConfirmation(order) {
     <div style="margin-top:24px; padding:16px; background:#fff; border:1px solid #ddd; border-radius:8px">
       <strong>📞 Questions? Contact us:</strong><br>
       Abigail: <a href="tel:+233593810461">+233 59 381 0461</a><br>
-      Alexander: <a href="tel:+233593810461">+233 59 381 0461</a><br>
+      Alexander: <a href="tel:+233552980212">+233 55 298 0212</a><br>
       Location: Kasoa Timber Market, Ghana
     </div>
   `

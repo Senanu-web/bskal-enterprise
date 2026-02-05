@@ -46,4 +46,4 @@ The admin endpoints require a token header `x-admin-token`. Set the token via en
 ## Contact
 BSK@L Enterprise — Kasoa Timber Market (Ghana)
 Abigail Abam (+233 59 381 0461)
-Alexander Segbedzi (+233 59 381 0461)
+Alexander Segbedzi (+233 55 298 0212)
