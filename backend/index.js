@@ -157,6 +157,19 @@ app.post('/api/admin/products/:id/restock', checkAdmin, (req, res) => {
   })
 })
 
+app.put('/api/admin/products/:id', checkAdmin, (req, res) => {
+  const { name, price, stock } = req.body
+  const updates = {}
+  if (name !== undefined) updates.name = name
+  if (price !== undefined) updates.price = Number(price)
+  if (stock !== undefined) updates.stock = Number(stock)
+  
+  db.updateProduct(req.params.id, updates, (err, p) => {
+    if (err || !p) return res.status(404).json({ error: err?.message || 'Product not found' })
+    res.json({ ok: true, product: p })
+  })
+})
+
 // Protected order status update
 app.post('/api/admin/orders/:id/status', checkAdmin, (req, res) => {
   const { status } = req.body

@@ -130,6 +130,29 @@ module.exports = {
     } catch (e) { callback(e) }
   },
   
+  updateProduct: (id, { name, price, stock }, callback) => {
+    try {
+      const updates = []
+      const params = []
+      
+      if (name !== undefined) { updates.push('name = ?'); params.push(name) }
+      if (price !== undefined) { updates.push('price = ?'); params.push(price) }
+      if (stock !== undefined) { updates.push('stock = ?'); params.push(stock) }
+      
+      if (updates.length === 0) return callback(new Error('No fields to update'))
+      
+      params.push(id)
+      db.run(`UPDATE products SET ${updates.join(', ')} WHERE id = ?`, params)
+      
+      const result = db.exec('SELECT * FROM products WHERE id = ?', [id])
+      const product = result.length > 0 && result[0].values.length > 0 ? {
+        id: result[0].values[0][0], name: result[0].values[0][1], price: result[0].values[0][2], stock: result[0].values[0][3]
+      } : null
+      saveDb()
+      callback(null, product)
+    } catch (e) { callback(e) }
+  },
+  
   createOrder: ({ items, delivery, payment, customer, total }, callback) => {
     try {
       // Verify stock
