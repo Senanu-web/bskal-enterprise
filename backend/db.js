@@ -1,5 +1,6 @@
 ﻿const path = require('path')
 const fs = require('fs')
+const crypto = require('crypto')
 const initSqlJs = require('sql.js')
 
 const DB_PATH = path.join(__dirname, 'data.sqlite')
@@ -7,6 +8,21 @@ const DB_PATH = path.join(__dirname, 'data.sqlite')
 let SQL = null
 let db = null
 let dbData = null
+
+const ORDER_COLUMNS = [
+  'id',
+  'total',
+  'status',
+  'delivery',
+  'payment',
+  'customer',
+  'createdAt',
+  'trackingToken',
+  'lastLat',
+  'lastLng',
+  'lastLocationAt',
+  'lastLocationAccuracy'
+]
 
 // Initialize database
 async function initDb() {
@@ -42,6 +58,8 @@ async function initDb() {
       createdAt TEXT NOT NULL
     )
   `)
+
+  ensureOrderColumns()
   
   db.run(`
     CREATE TABLE IF NOT EXISTS order_items (
@@ -77,14 +95,62 @@ function saveDb() {
   fs.writeFileSync(DB_PATH, Buffer.from(data))
 }
 
-function parseOrderRow(row) {
-  if (!row) return null
+function ensureOrderColumns() {
+  const info = db.exec('PRAGMA table_info(orders)')
+  const existing = info.length > 0 ? info[0].values.map(r => r[1]) : []
+  const addColumnIfMissing = (name, type) => {
+    if (!existing.includes(name)) {
+      db.run(`ALTER TABLE orders ADD COLUMN ${name} ${type}`)
+    }
+  }
+  addColumnIfMissing('trackingToken', 'TEXT')
+  addColumnIfMissing('lastLat', 'REAL')
+  addColumnIfMissing('lastLng', 'REAL')
+  addColumnIfMissing('lastLocationAt', 'TEXT')
+  addColumnIfMissing('lastLocationAccuracy', 'REAL')
+}
+
+function mapOrderRow(row) {
   return {
+    id: row[0],
+    total: row[1],
+    status: row[2],
+    delivery: row[3],
+    payment: row[4],
+    customer: row[5],
+    createdAt: row[6],
+    trackingToken: row[7],
+    lastLat: row[8],
+    lastLng: row[9],
+    lastLocationAt: row[10],
+    lastLocationAccuracy: row[11]
+  }
+}
+
+function parseOrderRow(row, { includeToken = false } = {}) {
+  if (!row) return null
+  const parsed = {
     ...row,
     delivery: row.delivery ? JSON.parse(row.delivery) : {},
     payment: row.payment ? JSON.parse(row.payment) : {},
     customer: row.customer ? JSON.parse(row.customer) : {}
   }
+  if (row.lastLat !== null && row.lastLng !== null && row.lastLat !== undefined && row.lastLng !== undefined) {
+    parsed.lastLocation = {
+      lat: row.lastLat,
+      lng: row.lastLng,
+      accuracy: row.lastLocationAccuracy,
+      at: row.lastLocationAt
+    }
+  } else {
+    parsed.lastLocation = null
+  }
+  if (!includeToken) delete parsed.trackingToken
+  delete parsed.lastLat
+  delete parsed.lastLng
+  delete parsed.lastLocationAt
+  delete parsed.lastLocationAccuracy
+  return parsed
 }
 
 // Exported functions for API (using callbacks to match other code)
@@ -172,8 +238,9 @@ module.exports = {
       }
       
       const now = new Date().toISOString()
-      db.run('INSERT INTO orders (total, status, delivery, payment, customer, createdAt) VALUES (?, ?, ?, ?, ?, ?)',
-        [total, 'Placed', JSON.stringify(delivery || {}), JSON.stringify(payment || {}), JSON.stringify(customer || {}), now])
+      const trackingToken = crypto.randomBytes(16).toString('hex')
+      db.run('INSERT INTO orders (total, status, delivery, payment, customer, createdAt, trackingToken) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        [total, 'Placed', JSON.stringify(delivery || {}), JSON.stringify(payment || {}), JSON.stringify(customer || {}), now, trackingToken])
       
       // Get last inserted ID
       const idResult = db.exec('SELECT last_insert_rowid() as id')
@@ -194,10 +261,8 @@ module.exports = {
   
   getOrders: (callback) => {
     try {
-      const result = db.exec('SELECT * FROM orders ORDER BY id DESC')
-      const orders = result.length > 0 ? result[0].values.map(row => ({
-        id: row[0], total: row[1], status: row[2], delivery: row[3], payment: row[4], customer: row[5], createdAt: row[6]
-      })) : []
+      const result = db.exec(`SELECT ${ORDER_COLUMNS.join(', ')} FROM orders ORDER BY id DESC`)
+      const orders = result.length > 0 ? result[0].values.map(row => mapOrderRow(row)) : []
       
       // Add items for each order
       orders.forEach(o => {
@@ -207,20 +272,33 @@ module.exports = {
         })) : []
       })
       
-      callback(null, orders.map(parseOrderRow))
+      callback(null, orders.map(row => parseOrderRow(row)))
+    } catch (e) { callback(e) }
+  },
+
+  getOrdersForAdmin: (callback) => {
+    try {
+      const result = db.exec(`SELECT ${ORDER_COLUMNS.join(', ')} FROM orders ORDER BY id DESC`)
+      const orders = result.length > 0 ? result[0].values.map(row => mapOrderRow(row)) : []
+
+      orders.forEach(o => {
+        const itemResult = db.exec('SELECT * FROM order_items WHERE order_id = ?', [o.id])
+        o.items = itemResult.length > 0 ? itemResult[0].values.map(row => ({
+          id: row[0], order_id: row[1], product_id: row[2], qty: row[3], price_at: row[4]
+        })) : []
+      })
+
+      callback(null, orders.map(row => parseOrderRow(row, { includeToken: true })))
     } catch (e) { callback(e) }
   },
   
   getOrderById: (id, callback) => {
     try {
-      const result = db.exec('SELECT * FROM orders WHERE id = ?', [id])
+      const result = db.exec(`SELECT ${ORDER_COLUMNS.join(', ')} FROM orders WHERE id = ?`, [id])
       if (result.length === 0 || result[0].values.length === 0) {
         return callback(null, null)
       }
-      const row = result[0].values[0]
-      const order = {
-        id: row[0], total: row[1], status: row[2], delivery: row[3], payment: row[4], customer: row[5], createdAt: row[6]
-      }
+      const order = mapOrderRow(result[0].values[0])
       
       const itemResult = db.exec('SELECT * FROM order_items WHERE order_id = ?', [id])
       order.items = itemResult.length > 0 ? itemResult[0].values.map(r => ({
@@ -228,6 +306,21 @@ module.exports = {
       })) : []
       
       callback(null, parseOrderRow(order))
+    } catch (e) { callback(e) }
+  },
+
+  updateOrderLocationByToken: (id, token, { lat, lng, accuracy }, callback) => {
+    try {
+      const result = db.exec('SELECT trackingToken FROM orders WHERE id = ?', [id])
+      if (result.length === 0 || result[0].values.length === 0) return callback(new Error('Order not found'))
+      const storedToken = result[0].values[0][0]
+      if (!storedToken || storedToken !== token) return callback(new Error('Invalid tracking token'))
+
+      const now = new Date().toISOString()
+      db.run('UPDATE orders SET lastLat = ?, lastLng = ?, lastLocationAccuracy = ?, lastLocationAt = ? WHERE id = ?',
+        [lat, lng, accuracy || null, now, id])
+      saveDb()
+      module.exports.getOrderById(id, callback)
     } catch (e) { callback(e) }
   },
   

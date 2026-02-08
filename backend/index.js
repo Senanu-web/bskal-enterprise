@@ -165,9 +165,30 @@ app.get('/api/orders/:id', (req, res) => {
   })
 })
 
+app.post('/api/orders/:id/location', (req, res) => {
+  const { token, lat, lng, accuracy } = req.body || {}
+  const orderId = req.params.id
+  const parsedLat = Number(lat)
+  const parsedLng = Number(lng)
+
+  if (!orderId) return res.status(400).json({ error: 'Missing order id' })
+  if (!token) return res.status(401).json({ error: 'Missing tracking token' })
+  if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) {
+    return res.status(400).json({ error: 'Invalid latitude/longitude' })
+  }
+
+  db.updateOrderLocationByToken(orderId, token, { lat: parsedLat, lng: parsedLng, accuracy }, (err, order) => {
+    if (err) {
+      const code = err.message === 'Invalid tracking token' ? 401 : 400
+      return res.status(code).json({ error: err.message })
+    }
+    res.json({ ok: true, order })
+  })
+})
+
 // Admin endpoints
 app.get('/api/admin/orders', checkAdmin, (req, res) => {
-  db.getOrders((err, orders) => {
+  db.getOrdersForAdmin((err, orders) => {
     if (err) return res.status(500).json({ error: err.message })
     res.json(orders || [])
   })

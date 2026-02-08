@@ -2,6 +2,10 @@ const apiBaseFromDom = document.documentElement?.dataset?.apiBase?.trim() || ''
 const API_BASE = (window.API_BASE || apiBaseFromDom || '').trim() || `${location.origin}/api`
 let products = []
 let cart = []
+let trackMap = null
+let trackMarker = null
+let trackPollTimer = null
+let activeTrackId = null
 
 function loadCartSafely() {
   try {
@@ -104,6 +108,20 @@ function addToCart(e) {
 function showSection(name) {
   document.querySelectorAll('#app > section').forEach(s => s.classList.add('hidden'))
   document.getElementById(name).classList.remove('hidden')
+  if (name !== 'track') stopTrackPolling()
+}
+
+function stopTrackPolling() {
+  if (trackPollTimer) {
+    clearInterval(trackPollTimer)
+    trackPollTimer = null
+  }
+  activeTrackId = null
+  if (trackMap) {
+    trackMap.remove()
+    trackMap = null
+    trackMarker = null
+  }
 }
 
 function renderCart() {
@@ -405,16 +423,74 @@ async function renderTrack() {
       document.getElementById('trackResult').innerHTML = `
         <div class="card" style="background:#e8f5e9">
           <strong>Order #${data.id}</strong><br>
-          Status: <span style="font-weight:600; color:var(--primary)">${data.status}</span><br>
-          Total: GH₵ ${data.total.toFixed(2)}<br>
-          Customer: ${data.customer?.name || 'N/A'}
+          Status: <span id="trackStatus" style="font-weight:600; color:var(--primary)">${data.status}</span><br>
+          Total: GH₵ <span id="trackTotal">${data.total.toFixed(2)}</span><br>
+          Customer: <span id="trackCustomer">${data.customer?.name || 'N/A'}</span>
+          <div id="trackMap" class="map-container" style="display:none"></div>
+          <div id="trackLocation" style="margin-top:8px; font-size:0.9rem; color:#666"></div>
         </div>
       `
+      activeTrackId = id
+      updateTrackLocation(data)
+
+      if (trackPollTimer) clearInterval(trackPollTimer)
+      trackPollTimer = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`${API_BASE}/orders/${id}`)
+          if (!pollRes.ok) return
+          const pollData = await pollRes.json()
+          const statusEl = document.getElementById('trackStatus')
+          const totalEl = document.getElementById('trackTotal')
+          if (statusEl) statusEl.textContent = pollData.status
+          if (totalEl) totalEl.textContent = pollData.total.toFixed(2)
+          updateTrackLocation(pollData)
+        } catch (e) {
+          console.warn('Failed to refresh tracking data', e)
+        }
+      }, 10000)
     } catch (e) { 
       console.error(e)
       document.getElementById('trackResult').innerHTML = '<p style="color:var(--danger)">Error fetching order</p>'
     }
   })
+}
+
+function updateTrackLocation(order) {
+  const mapEl = document.getElementById('trackMap')
+  const locationEl = document.getElementById('trackLocation')
+  if (!mapEl || !locationEl) return
+
+  const last = order.lastLocation
+  if (!last || last.lat === undefined || last.lng === undefined || last.lat === null || last.lng === null) {
+    mapEl.style.display = 'none'
+    locationEl.innerText = 'No live location yet. Please check again soon.'
+    return
+  }
+
+  const lat = Number(last.lat)
+  const lng = Number(last.lng)
+  const updatedAt = last.at ? new Date(last.at) : null
+  const updatedText = updatedAt ? updatedAt.toLocaleTimeString() : 'just now'
+
+  mapEl.style.display = 'block'
+  locationEl.innerText = `Last updated: ${updatedText}`
+
+  if (!window.L) {
+    locationEl.innerText += ' (Map unavailable)'
+    return
+  }
+
+  if (!trackMap) {
+    trackMap = L.map('trackMap').setView([lat, lng], 15)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(trackMap)
+    trackMarker = L.marker([lat, lng]).addTo(trackMap)
+  } else {
+    trackMap.setView([lat, lng])
+    if (trackMarker) trackMarker.setLatLng([lat, lng])
+  }
 }
 
 async function renderMyOrders() {

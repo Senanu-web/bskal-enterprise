@@ -110,9 +110,22 @@ function renderProducts(list) {
 function renderOrders(list) {
   const el = document.getElementById('orders')
   if (!list || list.length === 0) { el.innerHTML = '<p>No orders</p>'; return }
-  let html = '<table class="admin-table"><tr><th>ID</th><th>Customer</th><th>Total</th><th>Status</th><th>Update</th></tr>'
+  let html = '<table class="admin-table"><tr><th>ID</th><th>Customer</th><th>Total</th><th>Status</th><th>Update</th><th>Driver Link</th><th>Last Location</th></tr>'
   list.forEach(o => {
-    html += `<tr><td>${o.id}</td><td>${o.customer?.name || ''} ${o.customer?.phone || ''}</td><td>GH₵ ${o.total}</td><td id="status-${o.id}">${o.status}</td><td><select id="statusSel-${o.id}"><option>Placed</option><option>Processing</option><option>Dispatched</option><option>Delivered</option></select><button data-id="${o.id}" class="setStatus">Set</button></td></tr>`
+    const token = o.trackingToken
+    const driverLink = token ? `${location.origin}/driver.html?orderId=${o.id}&token=${token}` : ''
+    const lastLoc = o.lastLocation?.at ? new Date(o.lastLocation.at).toLocaleString() : 'No updates'
+    html += `<tr>
+      <td>${o.id}</td>
+      <td>${o.customer?.name || ''} ${o.customer?.phone || ''}</td>
+      <td>GH₵ ${o.total}</td>
+      <td id="status-${o.id}">${o.status}</td>
+      <td><select id="statusSel-${o.id}"><option>Placed</option><option>Processing</option><option>Dispatched</option><option>Delivered</option></select><button data-id="${o.id}" class="setStatus">Set</button></td>
+      <td>
+        ${driverLink ? `<button data-link="${driverLink}" class="copyDriver" style="background:var(--accent); color:#000">Copy</button>` : 'N/A'}
+      </td>
+      <td>${lastLoc}</td>
+    </tr>`
   })
   html += '</table>'
   el.innerHTML = html
@@ -122,6 +135,17 @@ function renderOrders(list) {
     const res = await fetchWithToken(`/admin/orders/${id}/status`, { method: 'POST', body: JSON.stringify({ status }) })
     if (res.error) return alert(res.error)
     document.getElementById(`status-${id}`).innerText = res.order.status
+  }))
+
+  document.querySelectorAll('.copyDriver').forEach(b => b.addEventListener('click', async (e) => {
+    const link = e.target.dataset.link
+    if (!link) return
+    try {
+      await navigator.clipboard.writeText(link)
+      alert('Driver link copied')
+    } catch (err) {
+      window.prompt('Copy this driver link:', link)
+    }
   }))
 }
 

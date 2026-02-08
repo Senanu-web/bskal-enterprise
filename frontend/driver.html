@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-api-base="">
+<head>
+  <meta charset="utf-8" />
+  <title>BSK@L Enterprise - Driver Tracker</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <header>
+    <div class="top">
+      <img id="logo" src="assets/logo.png" alt="BSK@L Enterprise" />
+      <div>
+        <h1>Driver Location Update</h1>
+        <div class="contacts">Share your live location for the delivery</div>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" style="max-width:600px">
+    <section>
+      <div class="card">
+        <label>Order ID *</label>
+        <input id="orderId" placeholder="Enter order ID" />
+
+        <label>Tracking Token *</label>
+        <input id="trackingToken" placeholder="Paste tracking token" />
+
+        <div style="display:flex; gap:12px; margin-top:12px">
+          <button id="startTracking">Start Live Location</button>
+          <button id="stopTracking" style="background:#ef4444; color:#fff">Stop</button>
+        </div>
+
+        <div id="driverStatus" style="margin-top:16px; font-size:0.95rem; color:#555"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <strong>Tips:</strong>
+        <ul style="margin:8px 0 0 18px">
+          <li>Allow location permission when asked.</li>
+          <li>Keep this page open while delivering.</li>
+          <li>Use mobile data for best results.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/driver.js"></script>
+</body>
+</html>
