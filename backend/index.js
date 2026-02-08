@@ -10,8 +10,8 @@ const port = process.env.PORT || 5500
 
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null
 const STRIPE_CURRENCY = process.env.STRIPE_CURRENCY || 'usd'
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123'
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin'
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'Senanu123'
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'Senanu'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ADMIN_TOKEN
 
 app.use(cors())
