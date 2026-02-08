@@ -2,10 +2,6 @@ const apiBaseFromDom = document.documentElement?.dataset?.apiBase?.trim() || ''
 const API_BASE = (window.API_BASE || apiBaseFromDom || '').trim() || `${location.origin}/api`
 let products = []
 let cart = []
-let stripe = null
-let elements = null
-let cardElement = null
-let stripeConfig = null
 
 function loadCartSafely() {
   try {
@@ -21,17 +17,6 @@ function loadCartSafely() {
 
 function saveCart() { localStorage.setItem('cart', JSON.stringify(cart)); updateCartCount() }
 function updateCartCount() { document.getElementById('cartCount').innerText = cart.reduce((s,i)=>s+Number(i.qty),0) }
-
-async function initStripe() {
-  try {
-    const res = await fetch(`${API_BASE}/stripe-config`)
-    stripeConfig = await res.json()
-    if (stripeConfig.publishableKey) {
-      stripe = Stripe(stripeConfig.publishableKey)
-      elements = stripe.elements()
-    }
-  } catch (e) { console.warn('Stripe not available', e) }
-}
 
 async function loadProducts() {
   try {
@@ -166,7 +151,6 @@ function showCheckout() {
       <label style="margin-top:16px">Payment Method *</label>
       <select id="payMethod">
         <option value="mobile">📱 Mobile Money (MTN / Vodafone / AirtelTigo)</option>
-        <option value="card">💳 Card Payment (Visa/Mastercard)</option>
         <option value="cash">💵 Cash on Delivery</option>
       </select>
       
@@ -185,12 +169,6 @@ function showCheckout() {
         <input id="mobileNumber" placeholder="Your mobile money number" />
         <label>Transaction Reference (after payment)</label>
         <input id="momoRef" placeholder="Enter reference number from SMS" />
-      </div>
-      
-      <div id="cardInfo" style="display:none">
-        <label>Card Details</label>
-        <div id="card-element" style="margin-top:8px; padding:10px; border:1px solid #ddd; border-radius:6px"></div>
-        <div id="card-errors" role="alert" style="color:#c00;margin-top:8px"></div>
       </div>
       
       <div id="cashInfo" style="display:none">
@@ -252,20 +230,11 @@ function showCheckout() {
   })
   
   document.getElementById('payMethod').addEventListener('change', (e)=>{
-    document.getElementById('cardInfo').style.display = e.target.value==='card' ? 'block' : 'none'
     document.getElementById('mobileInfo').style.display = e.target.value==='mobile' ? 'block' : 'none'
     document.getElementById('cashInfo').style.display = e.target.value==='cash' ? 'block' : 'none'
-    if (e.target.value === 'card' && stripe && !cardElement) mountCard()
   })
 
-  if (stripe) mountCard()
   document.getElementById('placeOrder').addEventListener('click', placeOrder)
-}
-
-function mountCard() {
-  if (!elements) return
-  cardElement = elements.create('card')
-  cardElement.mount('#card-element')
 }
 
 async function placeOrder() {
@@ -276,49 +245,7 @@ async function placeOrder() {
   const payMethod = document.getElementById('payMethod').value
   if (!name || !phone) return alert('Please provide name and phone')
 
-  // Card flow with Stripe
-  if (payMethod === 'card' && stripe) {
-    try {
-      // create payment intent
-      const itemsPayload = { items: cart.map(c => ({ id: c.id, qty: c.qty })) }
-      const piRes = await fetch(`${API_BASE}/create-payment-intent`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(itemsPayload) })
-      const piData = await piRes.json()
-      if (!piRes.ok) return alert(piData.error || 'Failed to create payment intent')
-
-      const { clientSecret, id: paymentIntentId } = piData
-      const result = await stripe.confirmPayment({
-        elements,
-        clientSecret,
-        confirmParams: {
-          return_url: `${location.origin}/`,
-          payment_method_data: {
-            billing_details: { name, phone }
-          }
-        }
-      })
-      if (result.error) return alert(result.error.message || 'Payment failed')
-      if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
-        // place order on server now that payment succeeded
-        const payload = {
-          customer: { name, phone },
-          items: cart.map(c => ({ id: c.id, qty: c.qty })),
-          delivery: { method: deliveryOpt, address },
-          payment: { method: 'card', stripePaymentIntentId: paymentIntentId }
-        }
-        const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-        const data = await res.json()
-        if (!res.ok) return alert(data.error || 'Order submission failed')
-        cart = []
-        saveCart()
-        showConfirmation(data.order)
-      } else {
-        alert('Payment did not succeed')
-      }
-    } catch (e) { console.error(e); alert('Payment failed') }
-    return
-  }
-
-  // Mobile or fallback flow (mock)
+  // Mobile or cash flow
   const momoNumber = document.getElementById('mobileNumber')?.value || ''
   const momoRef = document.getElementById('momoRef')?.value || ''
   
@@ -329,8 +256,7 @@ async function placeOrder() {
     payment: { 
       method: payMethod, 
       details: payMethod==='mobile' ? { phone: momoNumber, reference: momoRef } : 
-               payMethod==='cash' ? { type: 'cash_on_delivery' } :
-               { card: 'mock' }
+               { type: 'cash_on_delivery' }
     }
   }
   try {
@@ -413,7 +339,7 @@ function showConfirmation(order) {
       
       <div class="receipt-row">
         <span>Payment:</span>
-        <span>${order.payment.method === 'mobile' ? '📱 Mobile Money' : order.payment.method === 'cash' ? '💵 Cash' : '💳 Card'}</span>
+        <span>${order.payment.method === 'mobile' ? '📱 Mobile Money' : '💵 Cash'}</span>
       </div>
       
       <div class="receipt-row">
@@ -560,6 +486,5 @@ window.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('viewMyOrders').addEventListener('click', ()=>{ renderMyOrders() })
   document.getElementById('viewTrack').addEventListener('click', ()=>{ renderTrack() })
   // Admin link is plain anchor to /admin.html
-  await initStripe()
   loadProducts()
 })

@@ -2,7 +2,19 @@ const apiBaseFromDom = document.documentElement?.dataset?.apiBase?.trim() || ''
 const API_BASE = (window.API_BASE || apiBaseFromDom || '').trim() || `${location.origin}/api`
 
 function token() { return localStorage.getItem('adminToken') || '' }
-function setToken(v) { localStorage.setItem('adminToken', v) }
+function setAdminCookie(v) {
+  if (!v) return
+  const secure = location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `adminToken=${encodeURIComponent(v)}; Path=/; Max-Age=604800; SameSite=Lax${secure}`
+}
+function clearAdminCookie() {
+  const secure = location.protocol === 'https:' ? '; Secure' : ''
+  document.cookie = `adminToken=; Path=/; Max-Age=0; SameSite=Lax${secure}`
+}
+function setToken(v) {
+  localStorage.setItem('adminToken', v)
+  setAdminCookie(v)
+}
 
 async function fetchWithToken(path, opts = {}) {
   opts.headers = { ...(opts.headers || {}), 'x-admin-token': token(), 'Content-Type': 'application/json' }
@@ -115,11 +127,26 @@ function renderOrders(list) {
 
 // UI events
 window.addEventListener('DOMContentLoaded', () => {
+  const tokenParam = new URLSearchParams(window.location.search).get('token')
+  if (tokenParam) {
+    setToken(tokenParam.trim())
+    if (history.replaceState) history.replaceState({}, document.title, window.location.pathname)
+  }
   document.getElementById('setToken').addEventListener('click', () => {
     const v = document.getElementById('adminToken').value.trim()
     if (!v) return alert('Enter token')
     setToken(v)
     alert('Admin token set')
+  })
+  document.getElementById('logoutAdmin').addEventListener('click', async () => {
+    try {
+      await fetch('/admin/logout', { method: 'POST' })
+    } catch (err) {
+      // ignore network errors
+    }
+    localStorage.removeItem('adminToken')
+    clearAdminCookie()
+    window.location.href = '/admin-login.html'
   })
   document.getElementById('loadProducts').addEventListener('click', async () => {
     const res = await fetchWithToken('/admin/products')

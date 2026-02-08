@@ -11,12 +11,43 @@ const port = process.env.PORT || 5500
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null
 const STRIPE_CURRENCY = process.env.STRIPE_CURRENCY || 'usd'
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'admin123'
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin'
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ADMIN_TOKEN
 
 app.use(cors())
 app.use(bodyParser.json())
 
+function parseCookies(req) {
+  const header = req.headers?.cookie || ''
+  return header.split(';').reduce((acc, part) => {
+    const trimmed = part.trim()
+    if (!trimmed) return acc
+    const idx = trimmed.indexOf('=')
+    if (idx === -1) return acc
+    const key = trimmed.slice(0, idx)
+    const value = trimmed.slice(idx + 1)
+    acc[key] = decodeURIComponent(value)
+    return acc
+  }, {})
+}
+
+function getAdminCookie(req) {
+  const cookies = parseCookies(req)
+  return cookies.adminToken || ''
+}
+
+function setAdminCookie(res, token, isSecure) {
+  const secure = isSecure ? '; Secure' : ''
+  res.setHeader('Set-Cookie', `adminToken=${encodeURIComponent(token)}; Path=/; Max-Age=604800; SameSite=Lax${secure}`)
+}
+
+function clearAdminCookie(res, isSecure) {
+  const secure = isSecure ? '; Secure' : ''
+  res.setHeader('Set-Cookie', `adminToken=; Path=/; Max-Age=0; SameSite=Lax${secure}`)
+}
+
 function checkAdmin(req, res, next) {
-  const token = req.header('x-admin-token') || ''
+  const token = req.header('x-admin-token') || getAdminCookie(req) || ''
   if (token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized' })
   next()
 }
@@ -222,6 +253,40 @@ app.get('/api/check-discount/:phone', (req, res) => {
     if (err) return res.status(500).json({ error: err.message })
     res.json(discount)
   })
+})
+
+// Admin login: sets cookie for /admin.html access
+app.post('/admin/login', (req, res) => {
+  const username = (req.body?.username || '').trim()
+  const password = (req.body?.password || '').trim()
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https'
+  if (username && password && username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    setAdminCookie(res, ADMIN_TOKEN, isSecure)
+    return res.json({ ok: true })
+  }
+  return res.status(401).json({ error: 'Unauthorized' })
+})
+
+// Admin logout: clears cookie
+app.post('/admin/logout', (req, res) => {
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https'
+  clearAdminCookie(res, isSecure)
+  return res.json({ ok: true })
+})
+
+// Protect admin page: require admin token, otherwise redirect home
+app.get('/admin.html', (req, res) => {
+  const tokenFromQuery = (req.query?.token || '').trim()
+  const cookieToken = getAdminCookie(req)
+  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https'
+
+  if (tokenFromQuery && tokenFromQuery === ADMIN_TOKEN) {
+    setAdminCookie(res, ADMIN_TOKEN, isSecure)
+    return res.sendFile(path.join(__dirname, '..', 'frontend', 'admin.html'))
+  }
+
+  if (cookieToken !== ADMIN_TOKEN) return res.redirect('/')
+  return res.sendFile(path.join(__dirname, '..', 'frontend', 'admin.html'))
 })
 
 // Serve frontend static files for simple deployments
