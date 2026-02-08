@@ -47,8 +47,13 @@ function clearAdminCookie(res, isSecure) {
 }
 
 function checkAdmin(req, res, next) {
-  const token = req.header('x-admin-token') || getAdminCookie(req) || ''
-  if (token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized' })
+  const headerToken = req.header('x-admin-token') || ''
+  const cookieToken = getAdminCookie(req) || ''
+  const token = headerToken || cookieToken
+  if (token !== ADMIN_TOKEN) {
+    if (cookieToken === ADMIN_TOKEN) return next()
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
   next()
 }
 
@@ -139,7 +144,7 @@ app.post('/api/orders', async (req, res) => {
             safePayment.provider = safePayment?.method || 'mock'
             
             db.createOrder({ items, delivery, payment: safePayment, customer, total }, (err, order) => {
-              if (err) return res.status(500).json({ error: err.message || 'Server error' })
+              if (err) return res.status(500).json({ error: err.message || 'Failed to create order' })
               res.json({ ok: true, order })
             })
           }
@@ -148,7 +153,7 @@ app.post('/api/orders', async (req, res) => {
     })
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: err.message || 'Server error' })
+    res.status(500).json({ error: err.message || 'Failed to place order' })
   }
 })
 

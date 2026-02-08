@@ -239,8 +239,10 @@ module.exports = {
       
       const now = new Date().toISOString()
       const trackingToken = crypto.randomBytes(16).toString('hex')
-      db.run('INSERT INTO orders (total, status, delivery, payment, customer, createdAt, trackingToken) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        [total, 'Placed', JSON.stringify(delivery || {}), JSON.stringify(payment || {}), JSON.stringify(customer || {}), now, trackingToken])
+      db.run(
+        'INSERT INTO orders (total, status, delivery, payment, customer, createdAt, trackingToken) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [total, 'Placed', JSON.stringify(delivery || {}), JSON.stringify(payment || {}), JSON.stringify(customer || {}), now, trackingToken]
+      )
       
       // Get last inserted ID
       const idResult = db.exec('SELECT last_insert_rowid() as id')

@@ -17,7 +17,9 @@ function setToken(v) {
 }
 
 async function fetchWithToken(path, opts = {}) {
-  opts.headers = { ...(opts.headers || {}), 'x-admin-token': token(), 'Content-Type': 'application/json' }
+  const currentToken = token()
+  opts.headers = { ...(opts.headers || {}), 'Content-Type': 'application/json' }
+  if (currentToken) opts.headers['x-admin-token'] = currentToken
   const res = await fetch(`${API_BASE}${path}`, opts)
   if (res.status === 401) return { error: 'Unauthorized - invalid admin token' }
   return res.json()
