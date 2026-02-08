@@ -430,10 +430,43 @@ async function renderTrack() {
           Customer: <span id="trackCustomer">${data.customer?.name || 'N/A'}</span>
           <div id="trackMap" class="map-container" style="display:none"></div>
           <div id="trackLocation" style="margin-top:8px; font-size:0.9rem; color:#666"></div>
+          <div style="margin-top:12px; border-top:1px solid #d9ead3; padding-top:12px">
+            <label style="margin:0 0 6px 0; font-weight:600">Cancel Order (within 15 minutes)</label>
+            <input id="cancelPhone" placeholder="Enter your phone number to cancel" />
+            <button id="cancelOrderBtn" style="margin-top:8px; background:#dc3545; color:#fff">Cancel Order</button>
+            <div id="cancelMessage" style="margin-top:8px; font-size:0.9rem"></div>
+          </div>
         </div>
       `
       activeTrackId = id
       updateTrackLocation(data)
+
+      const cancelBtn = document.getElementById('cancelOrderBtn')
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', async () => {
+          const phone = document.getElementById('cancelPhone')?.value || ''
+          const msgEl = document.getElementById('cancelMessage')
+          if (!phone.trim()) {
+            if (msgEl) { msgEl.style.color = '#dc3545'; msgEl.textContent = 'Phone number is required.' }
+            return
+          }
+          if (!confirm('Are you sure you want to cancel this order?')) return
+          try {
+            const cancelRes = await fetch(`${API_BASE}/orders/${id}/cancel`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone })
+            })
+            const cancelData = await cancelRes.json()
+            if (!cancelRes.ok) throw new Error(cancelData.error || 'Cancel failed')
+            if (msgEl) { msgEl.style.color = '#0a4a8a'; msgEl.textContent = 'Order cancelled successfully.' }
+            const statusEl = document.getElementById('trackStatus')
+            if (statusEl) statusEl.textContent = cancelData.order.status
+          } catch (err) {
+            if (msgEl) { msgEl.style.color = '#dc3545'; msgEl.textContent = err.message || 'Cancel failed' }
+          }
+        })
+      }
 
       if (trackPollTimer) clearInterval(trackPollTimer)
       trackPollTimer = setInterval(async () => {

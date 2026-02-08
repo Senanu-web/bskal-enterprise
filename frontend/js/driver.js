@@ -30,6 +30,28 @@ async function sendLocation({ orderId, token, lat, lng, accuracy }) {
   return data
 }
 
+async function cancelDelivery() {
+  const orderId = document.getElementById('orderId').value.trim()
+  const token = document.getElementById('trackingToken').value.trim()
+
+  if (!orderId || !token) return setStatus('Order ID and tracking token are required.', true)
+  if (!confirm('Are you sure you want to cancel this delivery?')) return
+
+  try {
+    const res = await fetch(`${API_BASE}/orders/${orderId}/driver-cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Cancel failed')
+    setStatus('Order cancelled successfully.')
+    stopTracking()
+  } catch (err) {
+    setStatus(err.message || 'Cancel failed', true)
+  }
+}
+
 function startTracking() {
   const orderId = document.getElementById('orderId').value.trim()
   const token = document.getElementById('trackingToken').value.trim()
@@ -81,4 +103,5 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('startTracking').addEventListener('click', startTracking)
   document.getElementById('stopTracking').addEventListener('click', stopTracking)
+  document.getElementById('cancelDelivery').addEventListener('click', cancelDelivery)
 })

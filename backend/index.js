@@ -232,9 +232,54 @@ app.put('/api/admin/products/:id', checkAdmin, (req, res) => {
 // Protected order status update
 app.post('/api/admin/orders/:id/status', checkAdmin, (req, res) => {
   const { status } = req.body
+  const allowed = ['Placed', 'Processing', 'Dispatched', 'Delivered', 'Cancelled']
+  if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status' })
+
+  if (status === 'Cancelled') {
+    return db.cancelOrder(req.params.id, (err, o) => {
+      if (err || !o) return res.status(404).json({ error: err?.message || 'Order not found' })
+      res.json({ ok: true, order: o })
+    })
+  }
+
   db.setOrderStatus(req.params.id, status, (err, o) => {
     if (err || !o) return res.status(404).json({ error: 'Order not found' })
     res.json({ ok: true, order: o })
+  })
+})
+
+app.post('/api/orders/:id/cancel', (req, res) => {
+  const { phone } = req.body || {}
+  if (!phone) return res.status(400).json({ error: 'Phone is required' })
+  db.getOrderById(req.params.id, (err, o) => {
+    if (err || !o) return res.status(404).json({ error: 'Order not found' })
+    const createdAt = o.createdAt ? new Date(o.createdAt).getTime() : 0
+    const now = Date.now()
+    const cancelWindowMs = 15 * 60 * 1000
+    if (!createdAt || now - createdAt > cancelWindowMs) {
+      return res.status(400).json({ error: 'Cancellation not allowed after 15 minutes' })
+    }
+    const orderPhone = (o.customer?.phone || '').replace(/\s/g, '')
+    const providedPhone = String(phone).replace(/\s/g, '')
+    if (!orderPhone || orderPhone !== providedPhone) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+    db.cancelOrder(req.params.id, (cancelErr, updated) => {
+      if (cancelErr || !updated) return res.status(400).json({ error: cancelErr?.message || 'Cancel failed' })
+      res.json({ ok: true, order: updated })
+    })
+  })
+})
+
+app.post('/api/orders/:id/driver-cancel', (req, res) => {
+  const { token } = req.body || {}
+  if (!token) return res.status(401).json({ error: 'Missing tracking token' })
+  db.verifyTrackingToken(req.params.id, token, (err) => {
+    if (err) return res.status(401).json({ error: err.message })
+    db.cancelOrder(req.params.id, (cancelErr, updated) => {
+      if (cancelErr || !updated) return res.status(400).json({ error: cancelErr?.message || 'Cancel failed' })
+      res.json({ ok: true, order: updated })
+    })
   })
 })
 

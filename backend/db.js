@@ -333,6 +333,44 @@ module.exports = {
       module.exports.getOrderById(id, callback)
     } catch (e) { callback(e) }
   },
+
+  cancelOrder: (id, callback) => {
+    try {
+      const orderResult = db.exec('SELECT status FROM orders WHERE id = ?', [id])
+      if (orderResult.length === 0 || orderResult[0].values.length === 0) {
+        return callback(new Error('Order not found'))
+      }
+      const currentStatus = orderResult[0].values[0][0]
+      if (currentStatus === 'Cancelled') {
+        return module.exports.getOrderById(id, callback)
+      }
+
+      const itemsResult = db.exec('SELECT product_id, qty FROM order_items WHERE order_id = ?', [id])
+      if (itemsResult.length > 0) {
+        itemsResult[0].values.forEach(row => {
+          const productId = row[0]
+          const qty = row[1]
+          db.run('UPDATE products SET stock = stock + ? WHERE id = ?', [qty, productId])
+        })
+      }
+
+      db.run('UPDATE orders SET status = ? WHERE id = ?', ['Cancelled', id])
+      saveDb()
+      module.exports.getOrderById(id, callback)
+    } catch (e) { callback(e) }
+  },
+
+  verifyTrackingToken: (id, token, callback) => {
+    try {
+      const result = db.exec('SELECT trackingToken FROM orders WHERE id = ?', [id])
+      if (result.length === 0 || result[0].values.length === 0) {
+        return callback(new Error('Order not found'))
+      }
+      const storedToken = result[0].values[0][0]
+      if (!storedToken || storedToken !== token) return callback(new Error('Invalid tracking token'))
+      callback(null, true)
+    } catch (e) { callback(e) }
+  },
   
   createProduct: ({ name, price, cost, stock }, callback) => {
     try {

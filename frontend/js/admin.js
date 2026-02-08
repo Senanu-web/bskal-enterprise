@@ -122,7 +122,7 @@ function renderOrders(list) {
       <td>${o.customer?.name || ''} ${o.customer?.phone || ''}</td>
       <td>GH₵ ${o.total}</td>
       <td id="status-${o.id}">${o.status}</td>
-      <td><select id="statusSel-${o.id}"><option>Placed</option><option>Processing</option><option>Dispatched</option><option>Delivered</option></select><button data-id="${o.id}" class="setStatus">Set</button></td>
+      <td><select id="statusSel-${o.id}"><option>Placed</option><option>Processing</option><option>Dispatched</option><option>Delivered</option><option>Cancelled</option></select><button data-id="${o.id}" class="setStatus">Set</button></td>
       <td>
         ${driverLink ? `<button data-link="${driverLink}" class="copyDriver" style="background:var(--accent); color:#000">Copy</button>` : 'N/A'}
       </td>
