@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-api-base="">
+<head>
+  <meta charset="utf-8" />
+  <title>BSK@L Enterprise - Admin Login</title>
+  <link rel="stylesheet" href="assets/styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <header>
+    <div class="top">
+      <img id="logo" src="assets/logo.png" alt="BSK@L Enterprise" />
+      <div>
+        <h1>Admin Login</h1>
+        <div class="contacts">Authorized access only</div>
+      </div>
+    </div>
+  </header>
+
+  <main id="app" style="max-width:520px">
+    <section>
+      <div class="card">
+        <label>Username</label>
+        <input id="adminUsername" placeholder="Enter username" />
+
+        <label>Password</label>
+        <input id="adminPassword" type="password" placeholder="Enter password" />
+
+        <button id="adminLogin" style="margin-top:16px">Login</button>
+        <div id="loginMessage" style="margin-top:12px; font-size:0.95rem"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="js/admin-login.js"></script>
+</body>
+</html>

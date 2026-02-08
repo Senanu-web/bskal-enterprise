@@ -312,7 +312,7 @@ app.get('/admin.html', (req, res) => {
     return res.sendFile(path.join(__dirname, '..', 'frontend', 'admin.html'))
   }
 
-  if (cookieToken !== ADMIN_TOKEN) return res.redirect('/')
+  if (cookieToken !== ADMIN_TOKEN) return res.redirect('/admin-login.html')
   return res.sendFile(path.join(__dirname, '..', 'frontend', 'admin.html'))
 })
 
