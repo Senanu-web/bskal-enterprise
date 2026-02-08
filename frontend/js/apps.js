@@ -279,8 +279,10 @@ async function placeOrder() {
   }
   try {
     const res = await fetch(`${API_BASE}/orders`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-    const data = await res.json()
-    if (!res.ok) return alert(data.error || 'Order failed')
+    const text = await res.text()
+    let data = null
+    try { data = text ? JSON.parse(text) : null } catch (e) { data = null }
+    if (!res.ok) return alert((data && data.error) ? data.error : 'Order failed')
     cart = []
     saveCart()
     showConfirmation(data.order)

@@ -122,22 +122,23 @@ app.post('/api/orders', async (req, res) => {
         if (productCheckCount === items.length && !checkComplete) {
           checkComplete = true
           // If card payment via Stripe, verify the PaymentIntent succeeded
-          if (payment && payment.method === 'card' && payment.stripePaymentIntentId) {
+          const safePayment = payment && typeof payment === 'object' ? payment : {}
+          if (safePayment.method === 'card' && safePayment.stripePaymentIntentId) {
             if (!stripe) return res.status(400).json({ error: 'Stripe not configured on server' })
-            stripe.paymentIntents.retrieve(payment.stripePaymentIntentId, (err, pi) => {
+            stripe.paymentIntents.retrieve(safePayment.stripePaymentIntentId, (err, pi) => {
               if (err || !pi || pi.status !== 'succeeded') return res.status(400).json({ error: 'Card payment not completed' })
               
-              db.createOrder({ items, delivery, payment, customer, total }, (err, order) => {
+              db.createOrder({ items, delivery, payment: safePayment, customer, total }, (err, order) => {
                 if (err) return res.status(500).json({ error: err.message || 'Server error' })
                 res.json({ ok: true, order })
               })
             })
           } else {
             // For demo: non-card flows are mocked.
-            payment.processed = true
-            payment.provider = payment?.method || 'mock'
+            safePayment.processed = true
+            safePayment.provider = safePayment?.method || 'mock'
             
-            db.createOrder({ items, delivery, payment, customer, total }, (err, order) => {
+            db.createOrder({ items, delivery, payment: safePayment, customer, total }, (err, order) => {
               if (err) return res.status(500).json({ error: err.message || 'Server error' })
               res.json({ ok: true, order })
             })
