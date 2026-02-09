@@ -88,6 +88,21 @@ async function fetchWithAuth(path, opts = {}) {
   return res.json()
 }
 
+function setImportStatus(text, tone = 'idle') {
+  const badge = document.getElementById('importStatus')
+  if (!badge) return
+  const colors = {
+    idle: { bg: '#e5e7eb', fg: '#374151' },
+    info: { bg: '#dbeafe', fg: '#1d4ed8' },
+    success: { bg: '#dcfce7', fg: '#166534' },
+    error: { bg: '#fee2e2', fg: '#991b1b' }
+  }
+  const chosen = colors[tone] || colors.idle
+  badge.textContent = text
+  badge.style.background = chosen.bg
+  badge.style.color = chosen.fg
+}
+
 // Calculate profit margin percentage
 function calculateMargin(sellPrice, costPrice) {
   if (!sellPrice || sellPrice <= 0) return 0
@@ -479,23 +494,36 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('importProducts').addEventListener('click', async () => {
     const fileInput = document.getElementById('importFile')
     const summaryEl = document.getElementById('importSummary')
+    const importButton = document.getElementById('importProducts')
     const file = fileInput?.files?.[0]
     if (!file) return alert('Please choose a CSV or Excel file')
 
     summaryEl.textContent = 'Importing products...'
+    setImportStatus('Importing...', 'info')
+    if (importButton) {
+      importButton.disabled = true
+      importButton.style.opacity = '0.7'
+      importButton.style.cursor = 'not-allowed'
+    }
     const formData = new FormData()
     formData.append('file', file)
 
     const res = await fetchWithAuth('/admin/products/import', { method: 'POST', body: formData })
     if (res.error) {
       summaryEl.innerHTML = `<span style="color:#ef4444">${res.error}</span>`
+      setImportStatus('Failed', 'error')
+      if (importButton) {
+        importButton.disabled = false
+        importButton.style.opacity = '1'
+        importButton.style.cursor = 'pointer'
+      }
       return
     }
 
     const summary = res.summary || {}
     const errorRows = summary.errors || []
-    let html = `<div style="font-weight:600">Import complete.</div>`
-    html += `<div>Created: <strong>${summary.created || 0}</strong> · Updated: <strong>${summary.updated || 0}</strong> · Skipped: <strong>${summary.skipped || 0}</strong></div>`
+    let html = `<div style="font-weight:700; color:#166534">Import complete.</div>`
+    html += `<div style="margin-top:4px">Created: <strong>${summary.created || 0}</strong> · Updated: <strong>${summary.updated || 0}</strong> · Skipped: <strong>${summary.skipped || 0}</strong></div>`
     if (errorRows.length > 0) {
       const capped = errorRows.slice(0, 20)
       html += '<div style="margin-top:8px; color:#b91c1c">Some rows were skipped:</div><ul style="margin:6px 0 0 18px">'
@@ -508,13 +536,29 @@ window.addEventListener('DOMContentLoaded', () => {
       html += '</ul>'
     }
     summaryEl.innerHTML = html
+    setImportStatus('Done', 'success')
+    if (importButton) {
+      importButton.disabled = false
+      importButton.style.opacity = '1'
+      importButton.style.cursor = 'pointer'
+    }
 
     const products = await fetchWithToken('/admin/products')
     if (!products.error) renderProducts(products)
+  })
+
+  document.getElementById('importFile').addEventListener('change', (event) => {
+    const fileNameEl = document.getElementById('importFileName')
+    const file = event.target.files?.[0]
+    if (fileNameEl) {
+      fileNameEl.textContent = file ? `Selected: ${file.name}` : 'No file selected'
+    }
+    setImportStatus(file ? 'Ready' : 'Idle', file ? 'info' : 'idle')
   })
   
   // prefill token input with saved
   document.getElementById('adminToken').value = localStorage.getItem('adminToken') || ''
   updateRoleBadge()
   applyRoleUI()
+  setImportStatus('Idle', 'idle')
 })
