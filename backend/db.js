@@ -92,10 +92,6 @@ async function initDb() {
     )
   `)
 
-  ensureShiftColumns()
-  ensureAuditColumns()
-  ensureCashMovementColumns()
-
   db.run(`
     CREATE TABLE IF NOT EXISTS staff (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,6 +148,10 @@ async function initDb() {
       FOREIGN KEY(staffId) REFERENCES staff(id)
     )
   `)
+
+  ensureShiftColumns()
+  ensureAuditColumns()
+  ensureCashMovementColumns()
   
   // Seed products if empty
   const result = db.exec('SELECT COUNT(1) as c FROM products')
