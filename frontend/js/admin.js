@@ -2,6 +2,8 @@ const apiBaseFromDom = document.documentElement?.dataset?.apiBase?.trim() || ''
 const API_BASE = (window.API_BASE || apiBaseFromDom || '').trim() || `${location.origin}/api`
 
 function token() { return localStorage.getItem('adminToken') || '' }
+function staffToken() { return localStorage.getItem('staffToken') || '' }
+function staffRole() { return localStorage.getItem('staffRole') || '' }
 function setAdminCookie(v) {
   if (!v) return
   const secure = location.protocol === 'https:' ? '; Secure' : ''
@@ -14,14 +16,75 @@ function clearAdminCookie() {
 function setToken(v) {
   localStorage.setItem('adminToken', v)
   setAdminCookie(v)
+  updateRoleBadge()
+  applyRoleUI()
+}
+
+function setStaffToken(tokenValue, roleValue, nameValue) {
+  localStorage.setItem('staffToken', tokenValue || '')
+  localStorage.setItem('staffRole', roleValue || '')
+  localStorage.setItem('staffName', nameValue || '')
+  updateRoleBadge()
+}
+
+function clearStaffToken() {
+  localStorage.removeItem('staffToken')
+  localStorage.removeItem('staffRole')
+  localStorage.removeItem('staffName')
+  updateRoleBadge()
+}
+
+function updateRoleBadge() {
+  const badge = document.getElementById('roleBadge')
+  if (!badge) return
+  const role = staffRole() || (token() ? 'admin' : 'guest')
+  const name = localStorage.getItem('staffName') || ''
+  badge.textContent = role === 'admin' ? 'Role: Admin' : `Role: ${role}${name ? ` (${name})` : ''}`
+}
+
+function applyRoleUI() {
+  const role = staffRole() || (token() ? 'admin' : 'guest')
+  const managerOnly = ['loadProducts', 'loadProfitLoss', 'loadWeeklySales', 'loadCustomerDiscounts', 'addProduct', 'importProducts']
+  managerOnly.forEach(id => {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.style.display = role === 'manager' || role === 'admin' ? '' : 'none'
+  })
+  const orderControls = ['loadOrders']
+  orderControls.forEach(id => {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.style.display = role === 'guest' ? 'none' : ''
+  })
+  const productSections = ['addProductCard', 'importProductsCard', 'productsSection', 'profitGuideCard']
+  productSections.forEach(id => {
+    const el = document.getElementById(id)
+    if (!el) return
+    el.style.display = role === 'manager' || role === 'admin' ? '' : 'none'
+  })
 }
 
 async function fetchWithToken(path, opts = {}) {
   const currentToken = token()
+  const currentStaffToken = staffToken()
   opts.headers = { ...(opts.headers || {}), 'Content-Type': 'application/json' }
   if (currentToken) opts.headers['x-admin-token'] = currentToken
+  if (!currentToken && currentStaffToken) opts.headers['x-staff-token'] = currentStaffToken
   const res = await fetch(`${API_BASE}${path}`, opts)
-  if (res.status === 401) return { error: 'Unauthorized - invalid admin token' }
+  if (res.status === 401) return { error: 'Unauthorized - please login' }
+  if (res.status === 403) return { error: 'Forbidden - insufficient permissions' }
+  return res.json()
+}
+
+async function fetchWithAuth(path, opts = {}) {
+  const currentToken = token()
+  const currentStaffToken = staffToken()
+  opts.headers = { ...(opts.headers || {}) }
+  if (currentToken) opts.headers['x-admin-token'] = currentToken
+  if (!currentToken && currentStaffToken) opts.headers['x-staff-token'] = currentStaffToken
+  const res = await fetch(`${API_BASE}${path}`, opts)
+  if (res.status === 401) return { error: 'Unauthorized - please login' }
+  if (res.status === 403) return { error: 'Forbidden - insufficient permissions' }
   return res.json()
 }
 
@@ -40,7 +103,7 @@ function calculateProfit(sellPrice, costPrice) {
 function renderProducts(list) {
   const el = document.getElementById('products')
   if (!list || list.length === 0) { el.innerHTML = '<p>No products</p>'; return }
-  let html = '<table class="admin-table"><tr><th>ID</th><th>Name</th><th>Sell Price (GH₵)</th><th>Cost Price (GH₵)</th><th>Profit/Unit</th><th>Margin %</th><th>Stock</th><th>Actions</th></tr>'
+  let html = '<table class="admin-table"><tr><th>ID</th><th>Name</th><th>Barcode</th><th>Sell Price (GH₵)</th><th>Cost Price (GH₵)</th><th>Profit/Unit</th><th>Margin %</th><th>Stock</th><th>Actions</th></tr>'
   list.forEach(p => {
     const margin = calculateMargin(p.price, p.cost || 0)
     const profit = calculateProfit(p.price, p.cost || 0)
@@ -48,6 +111,7 @@ function renderProducts(list) {
     html += `<tr>
       <td>${p.id}</td>
       <td><input id="name-${p.id}" value="${p.name}" style="width:100%" /></td>
+      <td><input id="barcode-${p.id}" value="${p.barcode || ''}" style="width:120px" /></td>
       <td><input id="price-${p.id}" type="number" step="0.01" value="${p.price}" style="width:80px" /></td>
       <td><input id="cost-${p.id}" type="number" step="0.01" value="${p.cost || 0}" style="width:80px" /></td>
       <td style="font-weight:600; color:${marginColor}">GH₵ ${profit}</td>
@@ -67,6 +131,7 @@ function renderProducts(list) {
   document.querySelectorAll('.saveProduct').forEach(b => b.addEventListener('click', async (e) => {
     const id = e.target.dataset.id
     const name = document.getElementById(`name-${id}`).value.trim()
+    const barcode = document.getElementById(`barcode-${id}`).value.trim()
     const price = Number(document.getElementById(`price-${id}`).value)
     const cost = Number(document.getElementById(`cost-${id}`).value)
     const stock = Number(document.getElementById(`stock-${id}`).value)
@@ -84,7 +149,7 @@ function renderProducts(list) {
     
     const res = await fetchWithToken(`/admin/products/${id}`, { 
       method: 'PUT', 
-      body: JSON.stringify({ name, price, cost, stock }) 
+      body: JSON.stringify({ name, price, cost, stock, barcode }) 
     })
     if (res.error) return alert(res.error)
     
@@ -172,7 +237,44 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     localStorage.removeItem('adminToken')
     clearAdminCookie()
+    updateRoleBadge()
+    applyRoleUI()
     window.location.href = '/admin-login.html'
+  })
+  document.getElementById('staffLogin').addEventListener('click', async () => {
+    const name = document.getElementById('staffName').value.trim()
+    const username = document.getElementById('staffUsername').value.trim()
+    const password = document.getElementById('staffPassword').value
+    if (!username || !password) return alert('Enter staff username and password')
+    try {
+      const res = await fetch(`${API_BASE}/staff/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+      const data = await res.json()
+      if (!res.ok && data.code === 'no_staff') {
+        if (!name) return alert('Enter full name for first manager setup')
+        const bootRes = await fetch(`${API_BASE}/staff/bootstrap`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, username, password })
+        })
+        const bootData = await bootRes.json()
+        if (!bootRes.ok) return alert(bootData.error || 'Bootstrap failed')
+        return alert('Manager created. Please login again.')
+      }
+      if (!res.ok) return alert(data.error || 'Login failed')
+      setStaffToken(data.token, data.staff.role, data.staff.name)
+      applyRoleUI()
+      alert('Staff login successful')
+    } catch (err) {
+      alert('Staff login failed')
+    }
+  })
+  document.getElementById('staffLogout').addEventListener('click', async () => {
+    clearStaffToken()
+    applyRoleUI()
   })
   document.getElementById('loadProducts').addEventListener('click', async () => {
     const res = await fetchWithToken('/admin/products')
@@ -335,6 +437,7 @@ window.addEventListener('DOMContentLoaded', () => {
   
   document.getElementById('addProduct').addEventListener('click', async () => {
     const name = document.getElementById('newProductName').value.trim()
+    const barcode = document.getElementById('newProductBarcode').value.trim()
     const price = Number(document.getElementById('newProductPrice').value)
     const cost = Number(document.getElementById('newProductCost').value)
     const stock = Number(document.getElementById('newProductStock').value)
@@ -355,7 +458,7 @@ window.addEventListener('DOMContentLoaded', () => {
     
     const res = await fetchWithToken('/admin/products', { 
       method: 'POST', 
-      body: JSON.stringify({ name, price, cost, stock }) 
+      body: JSON.stringify({ name, price, cost, stock, barcode }) 
     })
     
     if (res.error) return alert(res.error)
@@ -363,6 +466,7 @@ window.addEventListener('DOMContentLoaded', () => {
     alert(`Product "${res.product.name}" added successfully!\n\nID: ${res.product.id}\nSelling Price: GH₵ ${price.toFixed(2)}\nCost Price: GH₵ ${cost.toFixed(2)}\nProfit per unit: GH₵ ${profit}\nMargin: ${margin}%`)    
     // Clear form
     document.getElementById('newProductName').value = ''
+    document.getElementById('newProductBarcode').value = ''
     document.getElementById('newProductPrice').value = ''
     document.getElementById('newProductCost').value = ''
     document.getElementById('newProductStock').value = ''
@@ -371,7 +475,46 @@ window.addEventListener('DOMContentLoaded', () => {
     const products = await fetchWithToken('/admin/products')
     if (!products.error) renderProducts(products)
   })
+
+  document.getElementById('importProducts').addEventListener('click', async () => {
+    const fileInput = document.getElementById('importFile')
+    const summaryEl = document.getElementById('importSummary')
+    const file = fileInput?.files?.[0]
+    if (!file) return alert('Please choose a CSV or Excel file')
+
+    summaryEl.textContent = 'Importing products...'
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const res = await fetchWithAuth('/admin/products/import', { method: 'POST', body: formData })
+    if (res.error) {
+      summaryEl.innerHTML = `<span style="color:#ef4444">${res.error}</span>`
+      return
+    }
+
+    const summary = res.summary || {}
+    const errorRows = summary.errors || []
+    let html = `<div style="font-weight:600">Import complete.</div>`
+    html += `<div>Created: <strong>${summary.created || 0}</strong> · Updated: <strong>${summary.updated || 0}</strong> · Skipped: <strong>${summary.skipped || 0}</strong></div>`
+    if (errorRows.length > 0) {
+      const capped = errorRows.slice(0, 20)
+      html += '<div style="margin-top:8px; color:#b91c1c">Some rows were skipped:</div><ul style="margin:6px 0 0 18px">'
+      capped.forEach(err => {
+        html += `<li>Row ${err.row}: ${err.name || 'Unknown'} — ${err.error}</li>`
+      })
+      if (errorRows.length > capped.length) {
+        html += `<li>...and ${errorRows.length - capped.length} more</li>`
+      }
+      html += '</ul>'
+    }
+    summaryEl.innerHTML = html
+
+    const products = await fetchWithToken('/admin/products')
+    if (!products.error) renderProducts(products)
+  })
   
   // prefill token input with saved
   document.getElementById('adminToken').value = localStorage.getItem('adminToken') || ''
+  updateRoleBadge()
+  applyRoleUI()
 })
