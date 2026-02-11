@@ -18,6 +18,7 @@ const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'Senanu'
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ADMIN_TOKEN
 const POS_SYNC_TOKEN = process.env.POS_SYNC_TOKEN || ADMIN_TOKEN
 const STAFF_TOKEN_SECRET = process.env.STAFF_TOKEN_SECRET || 'change_me_staff_secret'
+const POS_DOWNLOAD_TOKEN = process.env.POS_DOWNLOAD_TOKEN || ''
 
 app.use(cors())
 app.use(bodyParser.json())
@@ -70,6 +71,14 @@ function checkAdmin(req, res, next) {
 function checkPos(req, res, next) {
   const token = req.header('x-pos-token') || ''
   if (!token || token !== POS_SYNC_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  next()
+}
+
+function checkDownloadToken(req, res, next) {
+  const token = req.header('x-download-token') || req.query?.token || ''
+  if (!POS_DOWNLOAD_TOKEN || token !== POS_DOWNLOAD_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
   next()
@@ -924,11 +933,39 @@ app.post('/api/admin/products/import', checkStaffOrAdmin(['manager']), upload.si
     return res.status(400).json({ error: 'No valid rows found', errors: parseErrors })
   }
 
+  const mode = (req.query?.mode || '').trim().toLowerCase()
   const summary = {
     created: 0,
     updated: 0,
     skipped: 0,
+    replaced: 0,
+    mode: mode === 'replace' ? 'replace' : 'merge',
     errors: [...parseErrors]
+  }
+
+  if (mode === 'replace') {
+    const cleaned = items.map(item => ({
+      name: item.name,
+      price: item.price,
+      cost: item.cost !== null && item.cost !== undefined ? item.cost : 0,
+      stock: item.stock !== null && item.stock !== undefined ? item.stock : 0,
+      barcode: null
+    }))
+
+    return db.replaceProducts(cleaned, (err, result) => {
+      if (err) return res.status(500).json({ error: err.message || 'Replace failed' })
+      summary.replaced = result?.inserted || cleaned.length
+      db.addAuditLog({
+        actorType: 'staff',
+        actorId: req.staff?.id || ADMIN_USERNAME,
+        actorName: req.staff?.name || 'admin',
+        action: 'product.replace',
+        targetType: 'product',
+        targetId: null,
+        meta: { replaced: summary.replaced, errors: summary.errors.length }
+      }, () => {})
+      return res.json({ ok: true, summary })
+    })
   }
 
   const processNext = (index) => {
@@ -1028,6 +1065,9 @@ app.post('/admin/login', (req, res) => {
   }
   return res.status(401).json({ error: 'Unauthorized' })
 })
+
+// POS installer downloads (protected)
+app.use('/downloads/pos', checkDownloadToken, express.static(path.join(__dirname, 'downloads', 'pos')))
 
 // Admin logout: clears cookie
 app.post('/admin/logout', (req, res) => {

@@ -493,10 +493,17 @@ window.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('importProducts').addEventListener('click', async () => {
     const fileInput = document.getElementById('importFile')
+    const replaceToggle = document.getElementById('replaceProducts')
     const summaryEl = document.getElementById('importSummary')
     const importButton = document.getElementById('importProducts')
     const file = fileInput?.files?.[0]
     if (!file) return alert('Please choose a CSV or Excel file')
+
+    const replaceAll = Boolean(replaceToggle?.checked)
+    if (replaceAll) {
+      const confirmReplace = confirm('Replace ALL products? This will delete existing products and can affect old order history. Continue?')
+      if (!confirmReplace) return
+    }
 
     summaryEl.textContent = 'Importing products...'
     setImportStatus('Importing...', 'info')
@@ -508,7 +515,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const formData = new FormData()
     formData.append('file', file)
 
-    const res = await fetchWithAuth('/admin/products/import', { method: 'POST', body: formData })
+    const modeQuery = replaceAll ? '?mode=replace' : ''
+    const res = await fetchWithAuth(`/admin/products/import${modeQuery}`, { method: 'POST', body: formData })
     if (res.error) {
       summaryEl.innerHTML = `<span style="color:#ef4444">${res.error}</span>`
       setImportStatus('Failed', 'error')
@@ -523,7 +531,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const summary = res.summary || {}
     const errorRows = summary.errors || []
     let html = `<div style="font-weight:700; color:#166534">Import complete.</div>`
-    html += `<div style="margin-top:4px">Created: <strong>${summary.created || 0}</strong> · Updated: <strong>${summary.updated || 0}</strong> · Skipped: <strong>${summary.skipped || 0}</strong></div>`
+    if (summary.mode === 'replace') {
+      html += `<div style="margin-top:4px">Replaced: <strong>${summary.replaced || 0}</strong> products</div>`
+    } else {
+      html += `<div style="margin-top:4px">Created: <strong>${summary.created || 0}</strong> · Updated: <strong>${summary.updated || 0}</strong> · Skipped: <strong>${summary.skipped || 0}</strong></div>`
+    }
     if (errorRows.length > 0) {
       const capped = errorRows.slice(0, 20)
       html += '<div style="margin-top:8px; color:#b91c1c">Some rows were skipped:</div><ul style="margin:6px 0 0 18px">'

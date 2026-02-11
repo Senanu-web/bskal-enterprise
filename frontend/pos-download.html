@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>BSK@L POS Download</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="assets/styles.css" />
+  <style>
+    body { background: #f7f7f8; }
+    .wrap { max-width: 760px; margin: 40px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+    .hint { color: #6b7280; font-size: 0.9rem; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    button { border: 0; background: #0f766e; color: #fff; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    input { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>BSK@L POS Download</h1>
+      <p class="hint">Enter your download token to access the installer. Share this page link on WhatsApp.</p>
+
+      <label>Download Token</label>
+      <input id="tokenInput" placeholder="Enter download token" />
+
+      <label style="margin-top:12px">Installer File Name</label>
+      <input id="fileInput" value="BSKAL POS Setup 1.0.0.exe" />
+      <div class="hint">Update this filename whenever you release a new version.</div>
+
+      <div class="actions" style="margin-top:16px">
+        <button id="downloadBtn">Download Installer</button>
+        <button id="portableBtn" type="button" style="background:#2563eb">Download Portable</button>
+      </div>
+
+      <div id="status" class="hint" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <script>
+    const baseUrl = `${location.origin}/downloads/pos`
+    const tokenInput = document.getElementById('tokenInput')
+    const fileInput = document.getElementById('fileInput')
+    const status = document.getElementById('status')
+
+    function makeUrl(fileName) {
+      const token = (tokenInput.value || '').trim()
+      if (!token) return null
+      const encodedFile = encodeURIComponent(fileName)
+      return `${baseUrl}/${encodedFile}?token=${encodeURIComponent(token)}`
+    }
+
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      const url = makeUrl(fileInput.value.trim())
+      if (!url) return (status.textContent = 'Enter a download token first.')
+      status.textContent = 'Starting download...'
+      window.location.href = url
+    })
+
+    document.getElementById('portableBtn').addEventListener('click', () => {
+      const token = (tokenInput.value || '').trim()
+      if (!token) return (status.textContent = 'Enter a download token first.')
+      const portableName = fileInput.value.trim().replace('Setup ', '')
+      const url = makeUrl(portableName)
+      if (!url) return
+      status.textContent = 'Starting portable download...'
+      window.location.href = url
+    })
+  </script>
+</body>
+</html>

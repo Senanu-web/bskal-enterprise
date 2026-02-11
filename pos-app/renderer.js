@@ -3,6 +3,7 @@ const money = new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS
 let state = null
 let cart = []
 let searchTerm = ''
+let backendUnavailable = false
 
 const $ = (id) => document.getElementById(id)
 
@@ -49,20 +50,51 @@ function setActiveTab(tab) {
 }
 
 function updateSyncStatus() {
-  const online = navigator.onLine
+  const online = navigator.onLine && !backendUnavailable
   const pending = state?.pendingChanges?.length || 0
   const status = online ? `Online • ${pending} pending` : `Offline • ${pending} pending`
   $('syncStatus').textContent = status
+  const offlineBadge = $('offlineBadge')
+  if (offlineBadge) offlineBadge.style.display = online ? 'none' : 'inline-block'
+}
+
+function setBackendAvailability(available) {
+  backendUnavailable = !available
+  updateSyncStatus()
+  applyRoleAccess()
+}
+
+async function probeBackend() {
+  const apiBase = state?.settings?.apiBase
+  if (!apiBase) {
+    setBackendAvailability(false)
+    return false
+  }
+  try {
+    const res = await fetch(`${apiBase}/products`)
+    if (!res.ok) throw new Error('Backend unavailable')
+    setBackendAvailability(true)
+    return true
+  } catch (err) {
+    setBackendAvailability(false)
+    return false
+  }
 }
 
 function applyRoleAccess() {
   const role = state?.currentStaff?.role
   const tabs = document.querySelectorAll('.tab')
-  if (!role) {
+  if (!navigator.onLine || backendUnavailable) {
     tabs.forEach(btn => btn.style.display = '')
+    applySettingsAccess()
     return
   }
-  const cashierAllowed = new Set(['sales', 'orders', 'tracking'])
+  if (!role) {
+    tabs.forEach(btn => btn.style.display = '')
+    applySettingsAccess()
+    return
+  }
+  const cashierAllowed = new Set(['sales', 'orders', 'tracking', 'settings'])
   tabs.forEach(btn => {
     const tab = btn.dataset.tab
     if (role === 'manager') {
@@ -76,18 +108,35 @@ function applyRoleAccess() {
       setActiveTab('sales')
     }
   }
+  applySettingsAccess()
+}
+
+function applySettingsAccess() {
+  const isManager = state?.currentStaff?.role === 'manager'
+  const allowAll = !navigator.onLine || backendUnavailable
+  const branchCard = $('settingsBranches')
+  const staffCard = $('settingsStaff')
+  if (branchCard) branchCard.style.display = (isManager || allowAll) ? '' : 'none'
+  if (staffCard) staffCard.style.display = (isManager || allowAll) ? '' : 'none'
 }
 
 async function staffFetch(path, options = {}) {
   const apiBase = state.settings?.apiBase
   const token = state.settings?.staffToken
+  if (!navigator.onLine || backendUnavailable) throw new Error('Offline')
   if (!apiBase || !token) throw new Error('Missing staff token')
   const opts = { ...options }
   opts.headers = { ...(opts.headers || {}), 'Content-Type': 'application/json', 'x-staff-token': token }
-  const res = await fetch(`${apiBase}${path}`, opts)
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Request failed')
-  return data
+  try {
+    const res = await fetch(`${apiBase}${path}`, opts)
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Request failed')
+    setBackendAvailability(true)
+    return data
+  } catch (err) {
+    setBackendAvailability(false)
+    throw err
+  }
 }
 
 function ensureLoginState() {
@@ -111,11 +160,21 @@ async function handleLogin() {
   }
 
   if (!apiBase) {
-    status.textContent = 'Set API Base URL in Settings.'
+    status.textContent = 'Set API Base URL in Connection Settings.'
     return
   }
 
   try {
+    if (!navigator.onLine || backendUnavailable) {
+      const offlineOk = await handleOfflineCredentials({ username, password, name })
+      if (!offlineOk) return
+      status.textContent = 'Offline login successful.'
+      ensureLoginState()
+      applyRoleAccess()
+      renderStaffBadge()
+      updateSyncStatus()
+      return
+    }
     const loginRes = await fetch(`${apiBase}/staff/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -140,7 +199,16 @@ async function handleLogin() {
     if (!loginRes.ok) throw new Error(loginData.error || 'Login failed')
     state.settings.staffToken = loginData.token
     state.currentStaff = loginData.staff
+    state.lastStaff = loginData.staff
+    await upsertLocalStaff({
+      id: loginData.staff.id,
+      name: loginData.staff.name,
+      username: loginData.staff.username,
+      role: loginData.staff.role,
+      password
+    })
     await persistState()
+    setBackendAvailability(true)
     status.textContent = ''
     ensureLoginState()
     applyRoleAccess()
@@ -148,18 +216,104 @@ async function handleLogin() {
     await loadCurrentShift()
     await renderStaffList()
   } catch (err) {
+    if (!navigator.onLine || err?.message?.includes('fetch')) {
+      setBackendAvailability(false)
+    }
     status.textContent = err.message || 'Login failed.'
   }
 }
 
 async function handleLogout() {
+  if (!state) return
   state.currentStaff = null
   state.currentShift = null
   state.settings.staffToken = ''
   state.branches = []
   await persistState()
+  setOverlayVisible(true)
   ensureLoginState()
   applyRoleAccess()
+  applySettingsAccess()
+}
+
+async function handleOfflineLogin() {
+  const status = $('loginStatus')
+  if (!state?.lastStaff) {
+    status.textContent = 'No cached staff. Login online once first.'
+    return
+  }
+  state.currentStaff = state.lastStaff
+  await persistState()
+  status.textContent = 'Offline mode enabled.'
+  ensureLoginState()
+  applyRoleAccess()
+  renderStaffBadge()
+  updateSyncStatus()
+}
+
+async function handleOfflineCredentials({ username, password, name }) {
+  const status = $('loginStatus')
+  if (!username || !password) {
+    status.textContent = 'Username and password required.'
+    return false
+  }
+
+  const localUsers = state.staffUsers || []
+  if (localUsers.length === 0) {
+    if (!name) {
+      status.textContent = 'Enter full name to create first manager (offline).'
+      return false
+    }
+    const passwordHash = await hashPassword(password)
+    const newUser = {
+      id: Date.now(),
+      name,
+      username,
+      role: 'manager',
+      passwordHash,
+      active: true
+    }
+    state.staffUsers = [newUser]
+    state.currentStaff = { id: newUser.id, name: newUser.name, username: newUser.username, role: newUser.role }
+    state.lastStaff = state.currentStaff
+    await persistState()
+    return true
+  }
+
+  const passwordHash = await hashPassword(password)
+  const found = localUsers.find(u => u.username === username && u.active !== false)
+  if (!found || found.passwordHash !== passwordHash) {
+    status.textContent = 'Offline login failed.'
+    return false
+  }
+  state.currentStaff = { id: found.id, name: found.name, username: found.username, role: found.role }
+  state.lastStaff = state.currentStaff
+  await persistState()
+  return true
+}
+
+async function upsertLocalStaff({ id, name, username, role, password }) {
+  if (!username || !password) return
+  const passwordHash = await hashPassword(password)
+  const users = state.staffUsers || []
+  const existing = users.find(u => u.username === username)
+  if (existing) {
+    existing.name = name || existing.name
+    existing.role = role || existing.role
+    existing.passwordHash = passwordHash
+    existing.active = existing.active !== false
+  } else {
+    users.push({
+      id: id || Date.now(),
+      name,
+      username,
+      role: role || 'cashier',
+      passwordHash,
+      active: true
+    })
+  }
+  state.staffUsers = users
+  await persistState()
 }
 
 async function addStaffUser() {
@@ -178,10 +332,14 @@ async function addStaffUser() {
   }
 
   try {
-    await staffFetch('/staff', {
-      method: 'POST',
-      body: JSON.stringify({ name, username, role, password })
-    })
+    if (!navigator.onLine || backendUnavailable) {
+      await upsertLocalStaff({ name, username, role, password })
+    } else {
+      await staffFetch('/staff', {
+        method: 'POST',
+        body: JSON.stringify({ name, username, role, password })
+      })
+    }
     $('staffName').value = ''
     $('staffUsername').value = ''
     $('staffPassword').value = ''
@@ -198,10 +356,23 @@ async function renderStaffList() {
     return
   }
   try {
-    const staff = await staffFetch('/staff')
+    const staff = (!navigator.onLine || backendUnavailable)
+      ? (state.staffUsers || [])
+      : await staffFetch('/staff')
     if (!staff || staff.length === 0) {
       root.innerHTML = '<p>No staff yet.</p>'
       return
+    }
+    if (navigator.onLine && !backendUnavailable) {
+      state.staffUsers = staff.map(user => ({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        role: user.role,
+        active: user.active !== false,
+        passwordHash: user.passwordHash || null
+      }))
+      await persistState()
     }
     root.innerHTML = staff.map(user => `
       <div class="product-item">
@@ -210,7 +381,7 @@ async function renderStaffList() {
       </div>
     `).join('')
   } catch (err) {
-    root.innerHTML = '<p>Failed to load staff.</p>'
+    root.innerHTML = `<p>${err.message === 'Offline' ? 'Offline: staff list unavailable.' : 'Failed to load staff.'}</p>`
   }
 }
 
@@ -647,6 +818,7 @@ function renderLowStock() {
 }
 
 async function loadBranches() {
+  if (!navigator.onLine || backendUnavailable) return
   try {
     const branches = await staffFetch('/branches')
     state.branches = branches || []
@@ -683,6 +855,26 @@ function renderBranchSelect() {
   }
 }
 
+async function saveSettingsFromInputs(source = 'settings') {
+  const apiBaseInput = source === 'login' ? $('loginApiBase') : $('apiBase')
+  const posTokenInput = source === 'login' ? $('loginPosToken') : $('posToken')
+  const printModeInput = $('printMode')
+  const branchSelect = $('branchSelect')
+  const statusEl = source === 'login' ? $('loginSettingsStatus') : $('settingsStatus')
+
+  if (apiBaseInput) state.settings.apiBase = apiBaseInput.value.trim()
+  if (posTokenInput) state.settings.posToken = posTokenInput.value.trim()
+  if (printModeInput) state.settings.printMode = printModeInput.value
+  if (branchSelect) state.settings.branchId = branchSelect.value
+  if (state.settings.apiBase) {
+    const base = state.settings.apiBase.replace(/\/api\/?$/, '')
+    state.settings.updateUrl = `${base}/downloads/pos`
+  }
+
+  await persistState()
+  if (statusEl) statusEl.textContent = 'Settings saved.'
+}
+
 async function addBranch() {
   if (!state.currentStaff || state.currentStaff.role !== 'manager') {
     alert('Only managers can add branches.')
@@ -692,21 +884,30 @@ async function addBranch() {
   const location = $('branchLocation').value.trim()
   if (!name) return alert('Branch name required')
   try {
-    await staffFetch('/branches', {
-      method: 'POST',
-      body: JSON.stringify({ name, location })
-    })
-    $('branchName').value = ''
-    $('branchLocation').value = ''
-    await loadBranches()
-    $('branchStatus').textContent = 'Branch added.'
+    if (!navigator.onLine || backendUnavailable) {
+      const newBranch = { id: Date.now(), name, location, active: true }
+      state.branches = [...(state.branches || []), newBranch]
+      if (!state.settings.branchId) state.settings.branchId = String(newBranch.id)
+      await persistState()
+      renderBranchSelect()
+      $('branchStatus').textContent = 'Branch added (offline).'
+    } else {
+      await staffFetch('/branches', {
+        method: 'POST',
+        body: JSON.stringify({ name, location })
+      })
+      $('branchName').value = ''
+      $('branchLocation').value = ''
+      await loadBranches()
+      $('branchStatus').textContent = 'Branch added.'
+    }
   } catch (err) {
     $('branchStatus').textContent = err.message || 'Failed to add branch.'
   }
 }
 
 async function loadCurrentShift() {
-  if (!state.settings?.staffToken) return
+  if (!state.settings?.staffToken || !navigator.onLine || backendUnavailable) return
   try {
     const data = await staffFetch('/pos/shifts/current')
     state.currentShift = data.shift
@@ -1103,6 +1304,10 @@ function mergeOrders(newOrders) {
 async function syncNow() {
   const apiBase = state.settings?.apiBase
   const posToken = state.settings?.posToken
+  if (!navigator.onLine || backendUnavailable) {
+    $('syncStatus').textContent = 'Offline • queued changes'
+    return
+  }
   if (!apiBase || !posToken) {
     $('syncStatus').textContent = 'Missing API base or POS token'
     return
@@ -1124,6 +1329,7 @@ async function syncNow() {
 
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Sync failed')
+    setBackendAvailability(true)
 
     const appliedIds = (data.applied || []).filter(a => a.status === 'ok' || a.status === 'skipped').map(a => a.changeId)
     if (appliedIds.length) {
@@ -1143,7 +1349,12 @@ async function syncNow() {
     renderLowStock()
     renderLabelProductOptions()
   } catch (err) {
-    $('syncStatus').textContent = `Sync failed: ${err.message}`
+    if (!navigator.onLine || err?.message?.includes('fetch')) {
+      setBackendAvailability(false)
+      $('syncStatus').textContent = 'Offline • queued changes'
+    } else {
+      $('syncStatus').textContent = `Sync failed: ${err.message}`
+    }
   }
 }
 
@@ -1156,7 +1367,10 @@ function wireEvents() {
   $('syncNow').addEventListener('click', syncNow)
   $('trackOrderBtn').addEventListener('click', renderTracking)
   $('loginBtn').addEventListener('click', handleLogin)
-  $('logoutBtn').addEventListener('click', handleLogout)
+  $('useOfflineBtn').addEventListener('click', handleOfflineLogin)
+  $('logoutBtn').addEventListener('click', async () => {
+    await handleLogout()
+  })
   $('addStaff').addEventListener('click', addStaffUser)
   $('refreshLowStock').addEventListener('click', renderLowStock)
   $('printLabels').addEventListener('click', printBarcodeLabels)
@@ -1189,25 +1403,35 @@ function wireEvents() {
   })
 
   $('saveSettings').addEventListener('click', async () => {
-    state.settings.apiBase = $('apiBase').value.trim()
-    state.settings.posToken = $('posToken').value.trim()
-    state.settings.printMode = $('printMode').value
-    state.settings.branchId = $('branchSelect').value
-    await persistState()
-    $('settingsStatus').textContent = 'Settings saved.'
+    await saveSettingsFromInputs('settings')
+  })
+  $('saveLoginSettings').addEventListener('click', async () => {
+    await saveSettingsFromInputs('login')
   })
 
   $('addBranch').addEventListener('click', addBranch)
 
-  window.addEventListener('online', updateSyncStatus)
+  window.addEventListener('online', () => {
+    updateSyncStatus()
+    probeBackend()
+  })
   window.addEventListener('offline', updateSyncStatus)
 }
 
 async function init() {
   try {
     await loadState()
+    if (!state.staffUsers) state.staffUsers = []
+    if (!state.settings.updateUrl && state.settings.apiBase) {
+      const base = state.settings.apiBase.replace(/\/api\/?$/, '')
+      state.settings.updateUrl = `${base}/downloads/pos`
+    }
     $('apiBase').value = state.settings?.apiBase || ''
     $('posToken').value = state.settings?.posToken || ''
+    const loginApiBase = $('loginApiBase')
+    const loginPosToken = $('loginPosToken')
+    if (loginApiBase) loginApiBase.value = state.settings?.apiBase || ''
+    if (loginPosToken) loginPosToken.value = state.settings?.posToken || ''
     $('printMode').value = state.settings?.printMode || 'thermal'
     renderBranchSelect()
     if ($('perfStart') && $('perfEnd')) {
@@ -1224,12 +1448,21 @@ async function init() {
     renderOrders()
     renderReports()
     renderLowStock()
-    await renderStaffList()
+    await probeBackend()
+    if (navigator.onLine && state.settings?.staffToken && !backendUnavailable) {
+      await renderStaffList()
+    } else if (!navigator.onLine) {
+      const loginStatus = $('loginStatus')
+      if (!state.currentStaff && state.lastStaff && loginStatus) {
+        loginStatus.textContent = 'Offline: tap “Use Offline Mode”.'
+      }
+    }
     ensureLoginState()
     applyRoleAccess()
+    applySettingsAccess()
     wireEvents()
 
-    if (state.settings?.staffToken) {
+    if (state.settings?.staffToken && navigator.onLine && !backendUnavailable) {
       await loadBranches()
       await loadCurrentShift()
     }
@@ -1238,7 +1471,7 @@ async function init() {
       renderShiftSummary(state.lastShiftSummary)
     }
 
-    if (navigator.onLine) {
+    if (navigator.onLine && !backendUnavailable) {
       await syncNow()
     }
 

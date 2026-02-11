@@ -369,6 +369,43 @@ module.exports = {
       callback(null, product)
     } catch (e) { callback(e) }
   },
+
+  replaceProducts: (items, callback) => {
+    try {
+      const list = Array.isArray(items) ? items : []
+      const maxResult = db.exec('SELECT MAX(id) as maxId FROM products')
+      const currentMax = maxResult.length > 0 && maxResult[0].values.length > 0 && maxResult[0].values[0][0]
+        ? Number(maxResult[0].values[0][0])
+        : 0
+      const startId = currentMax + 1
+      const now = new Date().toISOString()
+
+      db.run('BEGIN')
+      db.run('DELETE FROM products')
+
+      list.forEach((item, index) => {
+        const id = startId + index
+        const name = String(item.name || '').trim()
+        const price = Number(item.price || 0)
+        const cost = Number(item.cost || 0)
+        const stock = Number(item.stock || 0)
+        const barcode = item.barcode ? String(item.barcode).trim() : null
+
+        if (!name || !Number.isFinite(price)) return
+        db.run(
+          'INSERT INTO products (id, name, price, cost, stock, updatedAt, barcode) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [id, name, price, cost, stock, now, barcode]
+        )
+      })
+
+      db.run('COMMIT')
+      saveDb()
+      callback(null, { inserted: list.length })
+    } catch (e) {
+      try { db.run('ROLLBACK') } catch (err) { /* ignore */ }
+      callback(e)
+    }
+  },
   
   createOrder: ({ items, delivery, payment, customer, total, staff, branch }, callback) => {
     try {

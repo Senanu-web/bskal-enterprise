@@ -1,0 +1,54 @@
+{
+  "name": "bskl-pos",
+  "version": "1.0.0",
+  "description": "BSK@L Enterprise POS Desktop App",
+  "main": "main.js",
+  "author": "BSK@L Enterprise",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "bwip-js": "^4.6.0",
+    "electron-updater": "^6.1.8"
+  },
+  "build": {
+    "appId": "com.bskal.pos",
+    "productName": "BSKAL POS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://bskal-enterprise.onrender.com/downloads/pos"
+      }
+    ]
+  }
+}
